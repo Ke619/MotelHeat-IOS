@@ -125,6 +125,17 @@ jobs:
           ls python-packages python-packages/saga | head -30
           echo "First bytes of saga/__init__.pyc (Python version magic):"
           head -c 4 python-packages/saga/__init__.pyc | xxd
+          # Make sure python-packages is on sys.path before any game script runs.
+          # "00" sorts before "src/+config", and "python early" runs at load time.
+          cat > 00_pypath.rpy << 'RPY'
+          init -1000 python early:
+              import sys, os
+              _pp = os.path.join(renpy.config.gamedir, "python-packages")
+              if _pp not in sys.path:
+                  sys.path.insert(0, _pp)
+              print("pypath hook: added", _pp)
+          RPY
+          cat 00_pypath.rpy
 
       - name: Download Ren'Py SDK and iOS support
         run: |
@@ -156,6 +167,22 @@ jobs:
           else
             echo "No loose saga/__init__.pyc to compare (lib.rpa not unpacked)"
           fi
+
+      - name: Try importing saga with the SDK Python (diagnostic)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+          PY="$(ls lib/py3-mac-universal/python* | head -n1)"
+          "$PY" -c "
+          import sys
+          sys.path.insert(0, '$RUNNER_TEMP/proj/game/python-packages')
+          sys.path.insert(0, '$PWD')
+          try:
+              import saga
+              print('saga imported OK from', saga.__file__)
+          except BaseException as e:
+              import traceback; traceback.print_exc()
+          " 2>&1 | head -40
 
       - name: Generate the Xcode project
         run: |
