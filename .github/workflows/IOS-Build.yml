@@ -1,0 +1,154 @@
+name: Build Summertime Saga for iOS (unsigned IPA)
+
+# This repo only needs this one file at .github/workflows/build-ios.yml.
+# The game itself comes from a Release asset:
+#   1. Zip your "game" folder as game.zip (about 1.3 GiB, under GitHub's 2 GiB asset limit)
+#   2. Create a Release (tag 1.0 by default) and attach game.zip
+#   3. Actions > "Build Summertime Saga for iOS" > Run workflow
+# Optional: if game.zip ever gets too big, attach the .rpa files (art.rpa, etc.)
+# as separate release assets. Any *.rpa asset is merged into the game folder.
+
+on:
+  workflow_dispatch:
+    inputs:
+      renpy_version:
+        description: "Ren'Py version the game was built with"
+        required: true
+        default: "8.5.3"
+        type: string
+      release_tag:
+        description: "Release tag that holds game.zip"
+        required: true
+        default: "1.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      V: ${{ inputs.renpy_version }}
+    steps:
+      - name: Disk space at start
+        run: df -h /
+
+      - name: Download game.zip from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dl"
+          gh release download "${{ inputs.release_tag }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern "game.zip" \
+            --dir "$RUNNER_TEMP/dl" --clobber
+          # Optional separate .rpa assets attached to the same release.
+          gh release download "${{ inputs.release_tag }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern "*.rpa" \
+            --dir "$RUNNER_TEMP/dl" --clobber || echo "No separate .rpa assets (fine if they are inside game.zip)"
+          ls -lh "$RUNNER_TEMP/dl"
+
+      - name: Assemble a clean Ren'Py project
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          mkdir -p unz proj
+          unzip -q dl/game.zip -d unz
+          rm -rf unz/__MACOSX
+          # The game root is the shallowest folder holding script_version.txt
+          # (there are no loose .rpyc files, the scripts live inside the .rpa archives).
+          shallowest() { find unz -type f -name "$1" | awk '{print gsub("/","/"), $0}' | sort -n | head -n1 | cut -d' ' -f2-; }
+          MARK="$(shallowest script_version.txt)"
+          if [ -z "$MARK" ]; then MARK="$(shallowest lib.rpa)"; fi
+          if [ -z "$MARK" ]; then MARK="$(shallowest art.rpa)"; fi
+          if [ -z "$MARK" ]; then echo "Could not find the game files in game.zip" >&2; find unz | head -50; exit 1; fi
+          GAME_DIR="$(dirname "$MARK")"
+          echo "Game folder inside zip: $GAME_DIR"
+          mv "$GAME_DIR" proj/game
+          rm -rf proj/game/cache proj/game/saves
+          # Merge any separately attached .rpa assets.
+          for f in dl/*.rpa; do
+            [ -f "$f" ] && mv "$f" "proj/game/$(basename "$f")" && echo "Added $(basename "$f")"
+          done
+          rm -rf unz dl
+          ls proj/game/*.rpa >/dev/null 2>&1 || { echo "No .rpa archives found in the game folder" >&2; exit 1; }
+          ls -lh proj/game
+          df -h /
+
+      - name: Show game folder (diagnostic)
+        run: |
+          cd "$RUNNER_TEMP/proj/game"
+          echo "=== total size of game folder ==="
+          du -sh .
+          echo "=== files bigger than 1 MB ==="
+          find . -type f -size +1M -exec ls -lh {} \; | head -50
+          echo "=== top-level listing ==="
+          find . -maxdepth 2 | sort | head -100
+          echo "=== script_version.txt ==="
+          cat script_version.txt || true
+
+      - name: Download Ren'Py SDK and iOS support
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fL -o sdk.zip "https://www.renpy.org/dl/${V}/renpy-${V}-sdk.zip"
+          unzip -q sdk.zip
+          # iOS support is a separate download that the launcher normally
+          # installs into the SDK folder as "renios".
+          curl -fL -o renios.zip "https://www.renpy.org/dl/${V}/renpy-${V}-renios.zip"
+          mkdir renios-tmp && unzip -q renios.zip -d renios-tmp
+          # The zip may unpack to renios/ or renios-<version>/; handle both.
+          RENIOS_DIR="$(find renios-tmp -mindepth 1 -maxdepth 1 -type d -name 'renios*' | head -n1)"
+          if [ -z "$RENIOS_DIR" ]; then RENIOS_DIR=renios-tmp; fi
+          echo "iOS support folder: $RENIOS_DIR"
+          mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
+          rm -f sdk.zip renios.zip
+          ls "renpy-${V}-sdk" "renpy-${V}-sdk/renios"
+
+      - name: Generate the Xcode project
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+          chmod +x renpy.sh lib/*/renpy lib/*/python* 2>/dev/null || true
+          ./renpy.sh launcher ios_create "$RUNNER_TEMP/proj" "$RUNNER_TEMP/xcode"
+          find "$RUNNER_TEMP/xcode" -maxdepth 3 | head -50
+          df -h /
+
+      - name: Build with Xcode (no code signing)
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/xcode"
+          PROJ="$(find . -maxdepth 3 -name '*.xcodeproj' | head -n1)"
+          echo "Project: $PROJ"
+          xcodebuild -list -project "$PROJ"
+          SCHEME="$(xcodebuild -list -project "$PROJ" -json | python3 -c "import json,sys; print(json.load(sys.stdin)['project']['schemes'][0])")"
+          echo "Scheme: $SCHEME"
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+          df -h /
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" -maxdepth 2 -name '*.app' -type d | head -n1)"
+          echo "App: $APP"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          mv "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qr -1 "$RUNNER_TEMP/SummertimeSaga-unsigned.ipa" Payload)
+          ls -lh "$RUNNER_TEMP/SummertimeSaga-unsigned.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SummertimeSaga-unsigned-ipa
+          path: ${{ runner.temp }}/SummertimeSaga-unsigned.ipa
+          compression-level: 0
+          if-no-files-found: error
