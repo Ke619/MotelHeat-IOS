@@ -39,6 +39,13 @@ jobs:
           gh release download "${{ inputs.release_tag }}" \
             --repo "$GITHUB_REPOSITORY" --pattern "game.zip" \
             --dir "$RUNNER_TEMP/dl" --clobber
+          # Optional: archive.rpa (or other big files) attached to the same
+          # release as separate assets, in case they didn't fit in the zip.
+          for f in archive.rpa; do
+            gh release download "${{ inputs.release_tag }}" \
+              --repo "$GITHUB_REPOSITORY" --pattern "$f" \
+              --dir "$RUNNER_TEMP/dl" --clobber || echo "No separate $f asset (fine if it is inside game.zip)"
+          done
           ls -lh "$RUNNER_TEMP/dl"
 
       - name: Assemble a clean Ren'Py project
@@ -57,11 +64,25 @@ jobs:
           GAME_DIR="$(dirname "$MARK")"
           echo "Game folder inside zip: $GAME_DIR"
           cp -R "$GAME_DIR" proj/game
+          if [ -f dl/archive.rpa ]; then cp dl/archive.rpa proj/game/archive.rpa; echo "Added separate archive.rpa"; fi
+          # If archive.rpa sits somewhere else inside the zip, bring it along.
+          if [ ! -f proj/game/archive.rpa ]; then
+            RPA="$(find unz -type f -name archive.rpa | head -n1 || true)"
+            if [ -n "$RPA" ]; then cp "$RPA" proj/game/archive.rpa; echo "Copied archive.rpa from $RPA"; fi
+          fi
           ls -lh proj/game | head -50
 
       - name: Show game folder (diagnostic)
         run: |
+          echo "=== downloaded assets ==="
+          ls -lh "$RUNNER_TEMP/dl"
+          echo "=== what is inside the zip (top 2 levels) ==="
+          find "$RUNNER_TEMP/unz" -maxdepth 2 | sort | head -60
           cd "$RUNNER_TEMP/proj/game"
+          echo "=== total size of game folder ==="
+          du -sh .
+          echo "=== files bigger than 1 MB ==="
+          find . -type f -size +1M -exec ls -lh {} \; | head -50
           echo "=== top-level and tl/ listing ==="
           find . -maxdepth 3 -not -path './cache/*' | sort | head -200
           echo "=== .rpy source files present ==="
