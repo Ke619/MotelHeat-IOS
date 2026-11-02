@@ -89,6 +89,23 @@ jobs:
           echo "=== script_version.txt ==="
           cat script_version.txt || true
 
+      - name: Find the 'saga' Python module (diagnostic)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/proj/game"
+          python3 -m venv "$RUNNER_TEMP/v"
+          "$RUNNER_TEMP/v/bin/pip" install -q unrpa
+          for f in *.rpa; do
+            echo "=== $f (first 40 entries) ==="
+            "$RUNNER_TEMP/v/bin/unrpa" -l "$f" | head -40 || echo "could not list $f"
+            echo "=== entries in $f mentioning saga ==="
+            "$RUNNER_TEMP/v/bin/unrpa" -l "$f" | grep -i saga | head -20 || true
+          done
+          echo "=== loose saga files/folders ==="
+          find . -iname '*saga*' -not -name '*.rpa' | head -20
+          echo "=== python-packages / lib folders ==="
+          find . -maxdepth 2 \( -name python-packages -o -name lib \) | head
+
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
