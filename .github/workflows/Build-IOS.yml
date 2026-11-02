@@ -59,6 +59,17 @@ jobs:
           cp -R "$GAME_DIR" proj/game
           ls -lh proj/game | head -50
 
+      - name: Show game folder (diagnostic)
+        run: |
+          cd "$RUNNER_TEMP/proj/game"
+          echo "=== top-level and tl/ listing ==="
+          find . -maxdepth 3 -not -path './cache/*' | sort | head -200
+          echo "=== .rpy source files present ==="
+          find . -name '*.rpy' | sort | head -100
+          for f in naming_defaults.rpy tl/german/naming_defaults.rpy; do
+            if [ -f "$f" ]; then echo "=== head of $f ==="; head -60 "$f"; else echo "=== $f not present ==="; fi
+          done
+
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
