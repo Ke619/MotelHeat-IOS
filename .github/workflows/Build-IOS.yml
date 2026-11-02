@@ -184,6 +184,25 @@ jobs:
               import traceback; traceback.print_exc()
           " 2>&1 | head -40
 
+      - name: Disassemble saga/exports.pyc imports (diagnostic)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+          PY="$(ls lib/py3-mac-universal/python* | head -n1)"
+          "$PY" - << 'PYEOF'
+          import marshal, dis, io, os
+          base = os.environ["RUNNER_TEMP"] + "/proj/game/python-packages/saga/"
+          for name in ("exports.pyc", "__init__.pyc"):
+              try:
+                  code = marshal.loads(open(base + name, "rb").read()[16:])
+              except Exception as e:
+                  print(name, "load failed:", e); continue
+              buf = io.StringIO(); dis.dis(code, file=buf)
+              lines = [l for l in buf.getvalue().splitlines() if "IMPORT" in l or "LOAD_CONST" in l and "'" in l]
+              print("=====", name, "co_names:", code.co_names[:40])
+              print("\n".join(lines[:60]))
+          PYEOF
+
       - name: Generate the Xcode project
         run: |
           set -euo pipefail
