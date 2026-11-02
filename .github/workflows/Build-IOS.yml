@@ -57,13 +57,17 @@ jobs:
           rm -rf unz/__MACOSX
           # Find the folder that holds the game's root scripts (works whether
           # the zip contains "game/" or the files directly).
-          MARK="$(find unz -type f -name options.rpyc | head -n1 || true)"
-          if [ -z "$MARK" ]; then MARK="$(find unz -type f -name script.rpyc | head -n1 || true)"; fi
-          if [ -z "$MARK" ]; then MARK="$(find unz -type f -name archive.rpa | head -n1 || true)"; fi
+          # If the zip holds several copies, take the shallowest one (the real
+          # game root), not whichever find happens to list first.
+          shallowest() { find unz -type f -name "$1" | awk '{print gsub("/","/"), $0}' | sort -n | head -n1 | cut -d' ' -f2-; }
+          MARK="$(shallowest options.rpyc)"
+          if [ -z "$MARK" ]; then MARK="$(shallowest script.rpyc)"; fi
+          if [ -z "$MARK" ]; then MARK="$(shallowest archive.rpa)"; fi
           if [ -z "$MARK" ]; then echo "Could not find the game files in game.zip" >&2; find unz | head -50; exit 1; fi
           GAME_DIR="$(dirname "$MARK")"
           echo "Game folder inside zip: $GAME_DIR"
           cp -R "$GAME_DIR" proj/game
+          rm -rf proj/game/cache proj/game/saves
           if [ -f dl/archive.rpa ]; then cp dl/archive.rpa proj/game/archive.rpa; echo "Added separate archive.rpa"; fi
           # If archive.rpa sits somewhere else inside the zip, bring it along.
           if [ ! -f proj/game/archive.rpa ]; then
@@ -76,6 +80,8 @@ jobs:
         run: |
           echo "=== downloaded assets ==="
           ls -lh "$RUNNER_TEMP/dl"
+          echo "=== every options.rpyc inside the zip ==="
+          find "$RUNNER_TEMP/unz" -name 'options.rpyc'
           echo "=== what is inside the zip (top 2 levels) ==="
           find "$RUNNER_TEMP/unz" -maxdepth 2 | sort | head -60
           cd "$RUNNER_TEMP/proj/game"
