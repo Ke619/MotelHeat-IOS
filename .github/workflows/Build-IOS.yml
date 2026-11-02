@@ -203,6 +203,49 @@ jobs:
               print("\n".join(lines[:60]))
           PYEOF
 
+      - name: Find where saga defines or imports 'gui' (diagnostic)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+          PY="$(ls lib/py3-mac-universal/python* | head -n1)"
+          "$PY" - << 'PYEOF'
+          import marshal, dis, os
+          base = os.environ["RUNNER_TEMP"] + "/proj/game/python-packages/saga/"
+          def walk(code):
+              yield code
+              for c in code.co_consts:
+                  if hasattr(c, "co_code"):
+                      yield from walk(c)
+          def load(path):
+              return marshal.loads(open(path, "rb").read()[16:])
+          print("=== every file that touches the name 'gui' ===")
+          for root, _, files in os.walk(base):
+              for f in sorted(files):
+                  if not f.endswith(".pyc"):
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      code = load(path)
+                  except Exception as e:
+                      print(path, "ERR", e); continue
+                  hits = []
+                  for c in walk(code):
+                      last = None
+                      for ins in dis.get_instructions(c):
+                          if ins.opname == "IMPORT_NAME":
+                              last = ins.argval
+                          if ins.opname in ("IMPORT_FROM", "IMPORT_NAME", "STORE_NAME", "STORE_GLOBAL") and ins.argval == "gui":
+                              hits.append((c.co_name, ins.opname, last))
+                  if hits:
+                      print(os.path.relpath(path, base), hits[:6])
+          print("=== all imports in flow.pyc ===")
+          code = load(base + "flow.pyc")
+          for c in walk(code):
+              for ins in dis.get_instructions(c):
+                  if ins.opname in ("IMPORT_NAME", "IMPORT_FROM"):
+                      print(c.co_name, ins.opname, ins.argval)
+          PYEOF
+
       - name: Generate the Xcode project
         run: |
           set -euo pipefail
