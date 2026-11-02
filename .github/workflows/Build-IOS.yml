@@ -21,6 +21,11 @@ on:
         required: true
         default: "1.0"
         type: string
+      extract_lib:
+        description: "Unpack lib.rpa into loose files (try this if 'No module named saga')"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -106,6 +111,18 @@ jobs:
           echo "=== python-packages / lib folders ==="
           find . -maxdepth 2 \( -name python-packages -o -name lib \) | head
 
+      - name: Unpack lib.rpa into loose files (optional)
+        if: ${{ inputs.extract_lib }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/proj/game"
+          [ -x "$RUNNER_TEMP/v/bin/unrpa" ] || { python3 -m venv "$RUNNER_TEMP/v"; "$RUNNER_TEMP/v/bin/pip" install -q unrpa; }
+          "$RUNNER_TEMP/v/bin/unrpa" lib.rpa
+          rm lib.rpa
+          ls saga | head -20
+          echo "First bytes of saga/__init__.pyc (Python version magic):"
+          head -c 4 saga/__init__.pyc | xxd
+
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
@@ -123,6 +140,19 @@ jobs:
           mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
           rm -f sdk.zip renios.zip
           ls "renpy-${V}-sdk" "renpy-${V}-sdk/renios"
+
+      - name: Compare .pyc Python version with the SDK (diagnostic)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+          PY="$(ls lib/py3-mac-universal/python* | head -n1)"
+          echo "SDK python: $PY"
+          "$PY" -c "import sys, importlib.util; print(sys.version); print('SDK magic number bytes:', importlib.util.MAGIC_NUMBER.hex())"
+          if [ -f "$RUNNER_TEMP/proj/game/saga/__init__.pyc" ]; then
+            echo "Game .pyc magic bytes:"; head -c 4 "$RUNNER_TEMP/proj/game/saga/__init__.pyc" | xxd -p
+          else
+            echo "No loose saga/__init__.pyc to compare (lib.rpa not unpacked)"
+          fi
 
       - name: Generate the Xcode project
         run: |
