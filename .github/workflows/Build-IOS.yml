@@ -67,11 +67,12 @@ jobs:
           unzip -q sdk.zip
           # iOS support is a separate download that the launcher normally
           # installs into the SDK folder as "renios".
-          curl -fL -o renios.zip "https://www.renpy.org/dl/${V}/renios-${V}.zip"
+          curl -fL -o renios.zip "https://www.renpy.org/dl/${V}/renpy-${V}-renios.zip"
           mkdir renios-tmp && unzip -q renios.zip -d renios-tmp
           # The zip may unpack to renios/ or renios-<version>/; handle both.
-          RENIOS_DIR="$(find renios-tmp -maxdepth 2 -type d -name 'renios*' | head -n1)"
+          RENIOS_DIR="$(find renios-tmp -mindepth 1 -maxdepth 1 -type d -name 'renios*' | head -n1)"
           if [ -z "$RENIOS_DIR" ]; then RENIOS_DIR=renios-tmp; fi
+          echo "iOS support folder: $RENIOS_DIR"
           mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
           ls "renpy-${V}-sdk" "renpy-${V}-sdk/renios"
 
