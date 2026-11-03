@@ -224,8 +224,12 @@ jobs:
           EXTRA=()
           if [ -n "${LIVE2D_IOS_LIB:-}" ] && [ -f "$LIVE2D_IOS_LIB" ]; then
             echo "Force-linking $LIVE2D_IOS_LIB"
-            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB -Wl,-export_dynamic")
-            EXTRA+=("DEAD_CODE_STRIPPING=NO")
+            # Keep every Cubism function alive (-u marks it as required) while
+            # leaving normal dead-stripping on for everything else
+            UFLAGS="$(nm -gU "$LIVE2D_IOS_LIB" 2>/dev/null |
+              awk '$2=="T" && $3 ~ /^_csm/ {printf " -Wl,-u,%s", $3}')"
+            echo "Keeping $(echo "$UFLAGS" | grep -o -- '-u,' | wc -l | tr -d ' ') Cubism symbols"
+            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB$UFLAGS")
           fi
 
           xcodebuild \
