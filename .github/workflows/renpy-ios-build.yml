@@ -31,14 +31,6 @@ jobs:
       GAME: ${{ inputs.game_name }}
 
     steps:
-      # Only pulls the live2d/ folder (if it exists) from the repo.
-      # Games that don't use Live2D can simply leave that folder out.
-      - name: Checkout (Live2D zip only)
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: live2d
-          sparse-checkout-cone-mode: true
-
       - name: Download game assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,6 +51,13 @@ jobs:
             --pattern "archive.rpa" \
             --dir "$RUNNER_TEMP/dl" \
             --clobber || echo "No separate archive.rpa found"
+
+          # Optional: Live2D Cubism SDK zip attached to the same release
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "CubismSdkForNative*.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No Cubism zip in release; assuming no Live2D"
 
           ls -lh "$RUNNER_TEMP/dl"
 
@@ -148,15 +147,15 @@ jobs:
 
           ls "renpy-${V}-sdk"
 
-      # Optional: only runs the install if the user put the Cubism SDK zip
-      # (downloaded from Live2D's website) in live2d/ in their PRIVATE repo.
+      # Optional: only installs if the user attached the Cubism SDK zip
+      # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
       - name: Install Live2D Cubism Core (if zip provided)
         run: |
           set -euo pipefail
 
-          ZIP="$(find "$GITHUB_WORKSPACE/live2d" -maxdepth 1 -name 'CubismSdkForNative*.zip' 2>/dev/null | head -n1 || true)"
+          ZIP="$(find "$RUNNER_TEMP/dl" -maxdepth 1 -name 'CubismSdkForNative*.zip' | head -n1 || true)"
           if [ -z "$ZIP" ]; then
-            echo "No Cubism zip in live2d/; assuming the game doesn't use Live2D."
+            echo "No Cubism zip in release; assuming the game doesn't use Live2D."
             exit 0
           fi
 
