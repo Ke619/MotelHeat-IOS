@@ -21,7 +21,7 @@ Before running a build, make sure you have:
 
 * A GitHub repository containing this workflow.
 * A Ren’Py game compatible with the selected SDK version.
-* A game.zip archive containing the game’s game folder.
+* A `game.zip` archive containing the game’s game folder.
 * A GitHub Release containing that archive.
 
 ## Setup
@@ -40,7 +40,7 @@ Locate your Ren’Py project’s game folder.
 
 Compress it into a ZIP archive named:
 
-game.zip
+`game.zip`
 
 The archive should contain your game’s scripts, images, audio, archives, and other required assets.
 
@@ -48,8 +48,8 @@ The archive should contain your game’s scripts, images, audio, archives, and o
 
 1. Open your repository’s Releases page.
 2. Create a new release.
-3. Set a release tag (for example, 1.0).
-4. Attach game.zip.
+3. Set a release tag (for example, `1.0`).
+4. Attach `game.zip`.
 5. Publish the release.
 
 The release tag must match the one entered when running the workflow.
@@ -57,13 +57,13 @@ The release tag must match the one entered when running the workflow.
 ## Building your game
 
 1. Navigate to the Actions tab.
-2. Select Universal Ren’Py iOS Builder.
+2. Select **Universal Ren’Py iOS Builder**.
 3. Click Run workflow.
 4. Enter the following information:
 
-Input	Description	Default
-Game name	Name used for the IPA and artifact	Required
-Ren’Py version	SDK version used to build the game	8.3.6
+| Input	Description	Default |
+| Game name	| Name used for the IPA and artifact	Required |
+| Ren’Py version | SDK version used to build the game	8.3.6
 Release tag	Release containing game.zip	1.0
 
 5. Click Run workflow and wait for the build to finish.
