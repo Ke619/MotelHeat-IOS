@@ -224,7 +224,8 @@ jobs:
           EXTRA=()
           if [ -n "${LIVE2D_IOS_LIB:-}" ] && [ -f "$LIVE2D_IOS_LIB" ]; then
             echo "Force-linking $LIVE2D_IOS_LIB"
-            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB")
+            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB -Wl,-export_dynamic")
+            EXTRA+=("DEAD_CODE_STRIPPING=NO")
           fi
 
           xcodebuild \
@@ -239,6 +240,29 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             ${EXTRA[@]+"${EXTRA[@]}"} \
             build
+
+      - name: Verify Live2D is linked into the app
+        if: ${{ env.LIVE2D_IOS_LIB != '' }}
+        run: |
+          set -euo pipefail
+
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
+            -maxdepth 2 -name '*.app' -type d | head -n1)"
+          EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          echo "Binary: $EXE"
+          ls -lh "$EXE"
+
+          nm -g "$EXE" > "$RUNNER_TEMP/nm.txt" 2>&1 || true
+          echo "--- Cubism symbols in the symbol table:"
+          grep -c -i csmGetVersion "$RUNNER_TEMP/nm.txt" || true
+
+          echo "--- Cubism symbols in the export list:"
+          xcrun dyld_info -exports "$EXE" 2>&1 | grep -i csmGetVersion || echo "csmGetVersion NOT exported"
+
+          if ! grep -q csmGetVersion "$RUNNER_TEMP/nm.txt"; then
+            echo "::error::Cubism Core was not linked into the app binary."
+            exit 1
+          fi
 
       - name: Package unsigned IPA
         run: |
