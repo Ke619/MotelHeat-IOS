@@ -1,4 +1,4 @@
-<div # Universal Ren’Py iOS Builder </div>
+# Universal Ren’Py iOS Builder
 
 A GitHub Actions workflow that automatically builds Ren’Py games into unsigned iOS IPA files using the official Ren’Py SDK and iOS support package.
 
