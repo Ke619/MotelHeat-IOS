@@ -12,6 +12,7 @@ No local Mac or Xcode installation required. Simply provide your game name, Ren'
 
 - **Universal:** Build different Ren'Py games using the same workflow.
 - **Configurable:** Choose the Ren'Py SDK version.
+- **Live2D support:** Optional, using a Cubism SDK zip you provide (see [Live2D games](#live2d-games)).
 - **Automated:** Downloads game assets and prepares the Xcode project.
 - **Unsigned builds:** No Apple Developer certificate required during compilation.
 - **Cloud-based:** Builds run on GitHub-hosted macOS runners.
@@ -22,7 +23,6 @@ No local Mac or Xcode installation required. Simply provide your game name, Ren'
 - A GitHub repository with Actions enabled.
 - A Ren'Py game compatible with the selected SDK.
 - A `game.zip` archive containing your game's `game` folder.
-- A GitHub Release containing `game.zip`.
 
 ## Setup
 
@@ -48,6 +48,21 @@ Create a GitHub Release and attach `game.zip`.
 
 The default release tag is `1.0`, but you can use any tag when running the workflow.
 
+## Live2D games
+
+If your game uses Live2D models, Ren'Py needs the Live2D Cubism Core library to build. Live2D does not allow redistribution of this library, so the workflow does not include it. You supply your own copy:
+
+1. **Use a private repository.** Release files in a public repository can be downloaded by anyone, which would redistribute the Cubism files and break Live2D's license. Games that don't use Live2D can stay in a public repository.
+2. **Download the Cubism SDK for Native** from [Live2D's website](https://www.live2d.com/en/sdk/download/native/) and accept their license.
+3. **Use version 5-r.4.1 or older.** Versions from 5-r.5 onward (Core 06) are not compatible with Ren'Py yet, and the build will stop with an error.
+4. **Attach the zip, unchanged, to the same release as `game.zip`.** Its name must start with `CubismSdkForNative` (for example `CubismSdkForNative-5-r.4.1.zip`).
+5. Run the workflow as usual. If a Cubism zip is found in the release, the workflow installs it automatically. If there isn't one, it assumes the game has no Live2D.
+
+Notes:
+
+- The Cubism zip is large, so attach it to the release rather than committing it to the repository.
+- Private repositories use GitHub Actions minutes, and macOS minutes are billed at a higher rate than Linux ones. Check your plan's allowance.
+
 ## Building
 
 Navigate to **Actions → Universal Ren'Py iOS Builder → Run workflow**.
@@ -56,17 +71,18 @@ Navigate to **Actions → Universal Ren'Py iOS Builder → Run workflow**.
 |:---|:---|:---|
 | `game_name` | Name of the game | Required |
 | `renpy_version` | Ren'Py SDK version | `8.3.6` |
-| `release_tag` | Release containing `game.zip` | `1.0` |
+| `release_tag` | Release containing `game.zip` (and the Cubism zip for Live2D games) | `1.0` |
 
 Once submitted, GitHub Actions will automatically:
 
-1. Download the game assets.
+1. Download the game assets (and the Cubism zip, if present).
 2. Extract and prepare the Ren'Py project.
 3. Download the specified Ren'Py SDK and iOS support package.
-4. Generate the Xcode project.
-5. Compile the application without code signing.
-6. Package the application into an IPA.
-7. Upload the finished IPA as an artifact.
+4. Install Live2D Cubism Core, if you provided it.
+5. Generate the Xcode project.
+6. Compile the application without code signing.
+7. Package the application into an IPA.
+8. Upload the finished IPA as an artifact.
 
 ## Downloading the IPA
 
@@ -91,6 +107,14 @@ You will need to sign it using a suitable sideloading solution:
 
 A valid signing method and provisioning profile may be required.
 
+## Troubleshooting
+
+| Error | Cause and fix |
+|:---|:---|
+| `Could not load Live2D ... libLive2DCubismCore.dylib was not found` | Your game uses Live2D but no Cubism zip was attached to the release. Attach one (see [Live2D games](#live2d-games)). |
+| `This Cubism SDK is too new for Ren'Py` or `csmGetDrawableRenderOrders not found` | The Cubism SDK is version 5-r.5 or newer. Use 5-r.4.1 or older. |
+| `Launching the project failed` | Ren'Py could not start your game. Look for the first error in the log above this message. |
+
 ## Notes
 
 - The selected SDK should match the version used to develop the game.
@@ -101,4 +125,4 @@ A valid signing method and provisioning profile may be required.
 
 ## License
 
-This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses.
+This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses. The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
