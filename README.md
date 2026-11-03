@@ -80,11 +80,6 @@ Output naming:
 
 `<GameName>-unsigned.ipa`
 
-Examples:
-
-- `Edgefield-unsigned.ipa`
-- `MotelHeat-unsigned.ipa`
-
 ## Installing on iOS
 
 The generated IPA is unsigned and cannot normally be installed directly on an iPhone.
