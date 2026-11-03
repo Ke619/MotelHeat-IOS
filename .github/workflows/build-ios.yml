@@ -1,0 +1,262 @@
+name: Universal Ren'Py iOS Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      game_name:
+        description: "Name of the game"
+        required: true
+        type: string
+      renpy_version:
+        description: "Ren'Py SDK version"
+        required: true
+        default: "8.3.6"
+        type: string
+      release_tag:
+        description: "GitHub Release tag containing game.zip"
+        required: true
+        default: "1.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      V: ${{ inputs.renpy_version }}
+      GAME: ${{ inputs.game_name }}
+
+    steps:
+      - name: Download game assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/dl"
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "game.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "archive.rpa" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No separate archive.rpa found"
+
+          # Optional: Live2D Cubism SDK zip attached to the same release
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "CubismSdkForNative*.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No Cubism zip in release; assuming no Live2D"
+
+          ls -lh "$RUNNER_TEMP/dl"
+
+      - name: Assemble Ren'Py project
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP"
+
+          mkdir -p unz proj
+
+          unzip -q dl/game.zip -d unz
+          rm -rf unz/__MACOSX
+
+          shallowest() {
+            find unz -type f -name "$1" |
+              awk '{print gsub("/","/"), $0}' |
+              sort -n |
+              head -n1 |
+              cut -d' ' -f2-
+          }
+
+          MARK="$(shallowest options.rpyc)"
+
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest script.rpyc)"
+          fi
+
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest archive.rpa)"
+          fi
+
+          if [ -z "$MARK" ]; then
+            echo "Could not find Ren'Py game files"
+            find unz | head -50
+            exit 1
+          fi
+
+          GAME_DIR="$(dirname "$MARK")"
+
+          echo "Game directory: $GAME_DIR"
+
+          cp -R "$GAME_DIR" proj/game
+
+          rm -rf proj/game/cache proj/game/saves
+
+          if [ -f dl/archive.rpa ]; then
+            cp dl/archive.rpa proj/game/archive.rpa
+          fi
+
+          if [ ! -f proj/game/archive.rpa ]; then
+            RPA="$(find unz -type f -name archive.rpa | head -n1 || true)"
+
+            if [ -n "$RPA" ]; then
+              cp "$RPA" proj/game/archive.rpa
+            fi
+          fi
+
+          echo "=== Game files ==="
+          du -sh proj/game
+          ls -lh proj/game | head -50
+
+      - name: Download Ren'Py SDK and iOS support
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP"
+
+          curl -fL -o sdk.zip \
+            "https://www.renpy.org/dl/${V}/renpy-${V}-sdk.zip"
+
+          unzip -q sdk.zip
+
+          curl -fL -o renios.zip \
+            "https://www.renpy.org/dl/${V}/renpy-${V}-renios.zip"
+
+          mkdir renios-tmp
+          unzip -q renios.zip -d renios-tmp
+
+          RENIOS_DIR="$(find renios-tmp -mindepth 1 -maxdepth 1 -type d -name 'renios*' | head -n1)"
+
+          if [ -z "$RENIOS_DIR" ]; then
+            RENIOS_DIR=renios-tmp
+          fi
+
+          mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
+
+          ls "renpy-${V}-sdk"
+
+      # Optional: only installs if the user attached the Cubism SDK zip
+      # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
+      - name: Install Live2D Cubism Core (if zip provided)
+        run: |
+          set -euo pipefail
+
+          ZIP="$(find "$RUNNER_TEMP/dl" -maxdepth 1 -name 'CubismSdkForNative*.zip' | head -n1 || true)"
+          if [ -z "$ZIP" ]; then
+            echo "No Cubism zip in release; assuming the game doesn't use Live2D."
+            exit 0
+          fi
+
+          cd "$RUNNER_TEMP"
+          rm -rf cubism && mkdir cubism
+          unzip -q "$ZIP" -d cubism
+          CORE="$(find cubism -type d -name Core -path '*CubismSdkForNative*' | head -n1)"
+          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
+
+          # Desktop library, needed so ios_create can launch the project
+          cp "$CORE/dll/macos/libLive2DCubismCore.dylib" "$SDK/lib/py3-mac-universal/"
+
+          # iOS device library for the Xcode build
+          # NOTE: destination is unverified; if Xcode fails with a linker error
+          # about Live2DCubismCore, this path needs adjusting.
+          mkdir -p "$SDK/renios/prototype/Live2D"
+          cp "$CORE/lib/ios/Release-iphoneos/libLive2DCubismCore.a" "$SDK/renios/prototype/Live2D/"
+
+          ls "$SDK/lib/py3-mac-universal" | grep -i live2d
+
+          # Cubism Core 06 (SDK 5-r.5+) renamed an API that Ren'Py still needs
+          if ! strings -a "$SDK/lib/py3-mac-universal/libLive2DCubismCore.dylib" | grep -q csmGetDrawableRenderOrders; then
+            echo "::error::This Cubism SDK is too new for Ren'Py (missing csmGetDrawableRenderOrders). Attach CubismSdkForNative 5-r.4.1 or older to the release."
+            exit 1
+          fi
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+
+          chmod +x renpy.sh lib/*/renpy lib/*/python* 2>/dev/null || true
+
+          ./renpy.sh launcher ios_create \
+            "$RUNNER_TEMP/proj" \
+            "$RUNNER_TEMP/xcode"
+
+          find "$RUNNER_TEMP/xcode" -maxdepth 3 | head -50
+
+      - name: Build with Xcode (unsigned)
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/xcode"
+
+          PROJ="$(find . -maxdepth 3 -name '*.xcodeproj' | head -n1)"
+
+          if [ -z "$PROJ" ]; then
+            echo "Xcode project not found"
+            exit 1
+          fi
+
+          xcodebuild -list -project "$PROJ"
+
+          SCHEME="$(xcodebuild -list -project "$PROJ" -json |
+            python3 -c "import json,sys; print(json.load(sys.stdin)['project']['schemes'][0])")"
+
+          echo "Building scheme: $SCHEME"
+
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
+            -maxdepth 2 -name '*.app' -type d | head -n1)"
+
+          if [ -z "$APP" ]; then
+            echo "Built app not found"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+
+          OUTPUT="$RUNNER_TEMP/${GAME}-unsigned.ipa"
+
+          (
+            cd "$RUNNER_TEMP/ipa"
+            zip -qr "$OUTPUT" Payload
+          )
+
+          ls -lh "$OUTPUT"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-unsigned-ipa
+          path: ${{ runner.temp }}/${{ inputs.game_name }}-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
