@@ -1,10 +1,10 @@
-Universal Ren’Py iOS Builder
+## Universal Ren’Py iOS Builder
 
 A GitHub Actions workflow that automatically builds Ren’Py games into unsigned iOS IPA files using the official Ren’Py SDK and iOS support package.
 
 No local Mac, Xcode installation, or manual project configuration required. Everything is built in GitHub Actions.
 
-Features
+# Features
 
 * Supports multiple Ren’Py games.
 * Choose your Ren’Py SDK version.
@@ -14,7 +14,7 @@ Features
 * Packages the result as an unsigned IPA.
 * Uploads the IPA as a downloadable GitHub Actions artifact.
 
-Requirements
+# Requirements
 
 Before running a build, make sure you have:
 
@@ -23,7 +23,7 @@ Before running a build, make sure you have:
 * A game.zip archive containing the game’s game folder.
 * A GitHub Release containing that archive.
 
-Setup
+# Setup
 
 1. Add the workflow
 
@@ -55,7 +55,7 @@ The archive should contain your game’s scripts, images, audio, archives, and o
 
 The release tag must match the one entered when running the workflow.
 
-Building your game
+# Building your game
 
 1. Navigate to the Actions tab.
 2. Select Universal Ren’Py iOS Builder.
@@ -69,7 +69,7 @@ Release tag	Release containing game.zip	1.0
 
 5. Click Run workflow and wait for the build to finish.
 
-Downloading the IPA
+# Downloading the IPA
 
 Once the workflow completes successfully:
 
@@ -86,7 +86,7 @@ For example:
 Edgefield-unsigned.ipa
 MotelHeat-unsigned.ipa
 
-Installing on iOS
+# Installing on iOS
 
 The generated IPA is unsigned and cannot normally be installed directly on an iPhone.
 
@@ -97,7 +97,7 @@ You must sign it using an appropriate sideloading or Apple code-signing solution
 
 A valid signing method and provisioning profile may be required.
 
-Important notes
+# Important notes
 
 * The game must be compatible with the selected Ren’Py SDK version.
 * The workflow uses the official Ren’Py SDK and matching iOS support package.
@@ -106,6 +106,6 @@ Important notes
 * Existing saves are excluded from the packaged game.
 * GitHub Actions artifacts are retained for 14 days by default.
 
-License
+# License
 
 This repository provides an automated build workflow. Game assets, scripts, and other third-party materials remain subject to their respective licenses.
