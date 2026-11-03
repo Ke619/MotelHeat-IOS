@@ -30,11 +30,7 @@ Before running a build, make sure you have:
 
 Create the following file in your repository:
 
-.github/
-
-└── workflows/
-
-    └── build-ios.yml
+`.github/workflows/build-ios.yml`
 
 Paste the universal builder workflow into build-ios.yml.
 
