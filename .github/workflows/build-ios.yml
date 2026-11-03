@@ -90,6 +90,11 @@ jobs:
             MARK="$(shallowest archive.rpa)"
           fi
 
+          # Games split into several archives (art.rpa, src.rpa, ...)
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest '*.rpa')"
+          fi
+
           if [ -z "$MARK" ]; then
             echo "Could not find Ren'Py game files"
             find unz | head -50
