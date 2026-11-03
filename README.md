@@ -4,7 +4,7 @@ A GitHub Actions workflow that automatically builds Ren’Py games into unsigned
 
 No local Mac, Xcode installation, or manual project configuration required. Everything is built in GitHub Actions.
 
--
+___
 
 ## Features
 
