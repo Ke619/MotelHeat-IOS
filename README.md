@@ -1,110 +1,109 @@
-# Universal Ren’Py iOS Builder
+# Universal Ren'Py iOS Builder
 
-A GitHub Actions workflow that automatically builds Ren’Py games into unsigned iOS IPA files using the official Ren’Py SDK and iOS support package.
+Build Ren'Py games into unsigned iOS IPA files directly through GitHub Actions.
 
-No local Mac, Xcode installation, or manual project configuration required. Everything is built in GitHub Actions.
+No local Mac or Xcode installation required. Simply provide your game name, Ren'Py SDK version, and release tag.
 
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Automated-blue?logo=githubactions)
+![Platform](https://img.shields.io/badge/Platform-iOS-lightgrey?logo=apple)
+![Ren'Py](https://img.shields.io/badge/Engine-Ren'Py-red)
 
 ## Features
 
-* Supports multiple Ren’Py games.
-* Choose your Ren’Py SDK version.
-* Automatically downloads the game from a GitHub Release.
-* Automatically generates the Xcode project.
-* Builds without code signing.
-* Packages the result as an unsigned IPA.
-* Uploads the IPA as a downloadable GitHub Actions artifact.
+- **Universal:** Build different Ren'Py games using the same workflow.
+- **Configurable:** Choose the Ren'Py SDK version.
+- **Automated:** Downloads game assets and prepares the Xcode project.
+- **Unsigned builds:** No Apple Developer certificate required during compilation.
+- **Cloud-based:** Builds run on GitHub-hosted macOS runners.
+- **Ready to download:** IPA files are uploaded as workflow artifacts.
 
 ## Requirements
 
-Before running a build, make sure you have:
-
-* A GitHub repository containing this workflow.
-* A Ren’Py game compatible with the selected SDK version.
-* A `game.zip` archive containing the game’s game folder.
-* A GitHub Release containing that archive.
+- A GitHub repository with Actions enabled.
+- A Ren'Py game compatible with the selected SDK.
+- A `game.zip` archive containing your game's `game` folder.
+- A GitHub Release containing `game.zip`.
 
 ## Setup
 
-1. Add the workflow
+### 1. Add the workflow
 
 Create the following file in your repository:
 
 `.github/workflows/build-ios.yml`
 
-Paste the universal builder workflow into build-ios.yml.
+Paste the universal workflow into it and commit your changes.
 
-2. Prepare your game
+### 2. Prepare your game
 
-Locate your Ren’Py project’s game folder.
-
-Compress it into a ZIP archive named:
+Locate your Ren'Py project's `game` folder and compress it into:
 
 `game.zip`
 
-The archive should contain your game’s scripts, images, audio, archives, and other required assets.
+Make sure the archive contains the game's scripts, images, audio, archives, and other required assets.
 
-3. Create a GitHub Release
+### 3. Create a release
 
-1. Open your repository’s Releases page.
-2. Create a new release.
-3. Set a release tag (for example, `1.0`).
-4. Attach `game.zip`.
-5. Publish the release.
+Create a GitHub Release and attach `game.zip`.
 
-The release tag must match the one entered when running the workflow.
+The default release tag is `1.0`, but you can use any tag when running the workflow.
 
-## Building your game
+## Building
 
-1. Navigate to the Actions tab.
-2. Select **Universal Ren’Py iOS Builder**.
-3. Click Run workflow.
-4. Enter the following information:
+Navigate to **Actions → Universal Ren'Py iOS Builder → Run workflow**.
 
-| Input	Description	Default |
-| Game name	| Name used for the IPA and artifact	Required |
-| Ren’Py version | SDK version used to build the game	8.3.6
-Release tag	Release containing game.zip	1.0
+| Input | Description | Default |
+|:---|:---|:---|
+| `game_name` | Name of the game | Required |
+| `renpy_version` | Ren'Py SDK version | `8.3.6` |
+| `release_tag` | Release containing `game.zip` | `1.0` |
 
-5. Click Run workflow and wait for the build to finish.
+Once submitted, GitHub Actions will automatically:
+
+1. Download the game assets.
+2. Extract and prepare the Ren'Py project.
+3. Download the specified Ren'Py SDK and iOS support package.
+4. Generate the Xcode project.
+5. Compile the application without code signing.
+6. Package the application into an IPA.
+7. Upload the finished IPA as an artifact.
 
 ## Downloading the IPA
 
-Once the workflow completes successfully:
+After a successful build:
 
 1. Open the completed workflow run.
-2. Scroll down to Artifacts.
+2. Find the **Artifacts** section.
 3. Download the generated IPA.
 
-The output follows this naming convention:
+Output naming:
 
-<GameName>-unsigned.ipa
+`<GameName>-unsigned.ipa`
 
-For example:
+Examples:
 
-Edgefield-unsigned.ipa
-MotelHeat-unsigned.ipa
+- `Edgefield-unsigned.ipa`
+- `MotelHeat-unsigned.ipa`
 
 ## Installing on iOS
 
 The generated IPA is unsigned and cannot normally be installed directly on an iPhone.
 
-You must sign it using an appropriate sideloading or Apple code-signing solution, such as:
+You will need to sign it using a suitable sideloading solution:
 
-* AltStore
-* Sideloadly
+- [AltStore](https://altstore.io/)
+- [Sideloadly](https://sideloadly.io/)
 
 A valid signing method and provisioning profile may be required.
 
-## Important notes
+## Notes
 
-* The game must be compatible with the selected Ren’Py SDK version.
-* The workflow uses the official Ren’Py SDK and matching iOS support package.
-* Game-specific dependencies or native extensions may require additional configuration.
-* The game name controls the output filename; it does not automatically change the app’s display name or bundle identifier.
-* Existing saves are excluded from the packaged game.
-* GitHub Actions artifacts are retained for 14 days by default.
+- The selected SDK should match the version used to develop the game.
+- Native extensions and additional dependencies may require modifications to the workflow.
+- The game name determines the output filename, not necessarily the installed app's display name.
+- Existing save files are excluded from the build.
+- Workflow artifacts are retained for 14 days by default.
 
 ## License
 
-This repository provides an automated build workflow. Game assets, scripts, and other third-party materials remain subject to their respective licenses.
+This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses.
