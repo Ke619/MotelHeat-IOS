@@ -362,6 +362,17 @@ jobs:
             echo "PYTHONPATH=$PYTHONPATH"
           fi
 
+          # Also place them in the SDK's own Python library folder, which Ren'Py
+          # always searches (its standard library lives there)
+          if [ -d "$RUNNER_TEMP/proj/game/python-packages" ]; then
+            ls "$RUNNER_TEMP/renpy-${V}-sdk/lib"
+            for LIBDIR in "$RUNNER_TEMP/renpy-${V}-sdk"/lib/python3*; do
+              [ -d "$LIBDIR" ] || continue
+              cp -R "$RUNNER_TEMP/proj/game/python-packages/." "$LIBDIR/"
+              echo "Copied packages into $LIBDIR"
+            done
+          fi
+
           ./renpy.sh launcher ios_create \
             "$RUNNER_TEMP/proj" \
             "$RUNNER_TEMP/xcode"
