@@ -134,4 +134,5 @@ A valid signing method and provisioning profile may be required.
 
 ## License
 
-This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses. The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
+- This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses. 
+- The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
