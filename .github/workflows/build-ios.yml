@@ -125,6 +125,111 @@ jobs:
           du -sh proj/game
           ls -lh proj/game | head -50
 
+      # Some games keep Python packages inside .rpa archives. Copy them out to
+      # game/python-packages/ so Ren'Py can always import them. Also prints what
+      # each archive contains, which helps when a game fails to start.
+      - name: Inspect .rpa archives and expose Python packages
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/expose_rpa.py" <<'PYEOF'
+          """Scan .rpa archives in the game folder, report their contents, and copy any
+          Python packages (folders containing __init__.py) out onto disk under
+          game/python-packages/, where Ren'Py always finds them."""
+          import os, sys, zlib, pickle
+
+          GAME = sys.argv[1]
+          OUT = os.path.join(GAME, "python-packages")
+          EXTS = (".py", ".pyc")
+
+
+          def read_index(f):
+              f.seek(0)
+              parts = f.readline().decode("latin1").split()
+              magic = parts[0] if parts else ""
+              if magic == "RPA-3.0":
+                  offset, key = int(parts[1], 16), int(parts[2], 16)
+              elif magic == "RPA-3.2":
+                  offset, key = int(parts[1], 16), 0
+                  for p in parts[3:]:
+                      key ^= int(p, 16)
+              elif magic == "RPA-2.0":
+                  offset, key = int(parts[1], 16), None
+              else:
+                  raise ValueError("unsupported archive format: %r" % magic)
+              f.seek(offset)
+              # Archives come from the user's own release; the index is a plain pickle.
+              index = pickle.loads(zlib.decompress(f.read()), encoding="latin1")
+              files = {}
+              for name, entries in index.items():
+                  if isinstance(name, bytes):
+                      name = name.decode("utf-8", "replace")
+                  ents = []
+                  for e in entries:
+                      off, ln = e[0], e[1]
+                      prefix = e[2] if len(e) > 2 else b""
+                      if key is not None:
+                          off ^= key
+                          ln ^= key
+                      if isinstance(prefix, str):
+                          prefix = prefix.encode("latin1")
+                      ents.append((off, ln, prefix))
+                  files[name.replace("\\", "/")] = ents
+              return files
+
+
+          def main():
+              archives = []
+              for root, _, names in os.walk(GAME):
+                  for n in names:
+                      if n.lower().endswith(".rpa"):
+                          archives.append(os.path.join(root, n))
+              if not archives:
+                  print("No .rpa archives found.")
+                  return
+
+              total = 0
+              for path in sorted(archives):
+                  rel = os.path.relpath(path, GAME)
+                  try:
+                      with open(path, "rb") as f:
+                          files = read_index(f)
+                          tops = sorted({n.split("/")[0] for n in files if "/" in n})
+                          print("%s: %d files; top-level folders: %s"
+                                % (rel, len(files), ", ".join(tops[:15]) or "(none)"))
+
+                          inits = {os.path.dirname(n) for n in files
+                                   if os.path.basename(n) in ("__init__.py", "__init__.pyc")}
+                          roots = {d for d in inits
+                                   if d and os.path.dirname(d) not in inits
+                                   and d != "renpy" and not d.startswith("python-packages")}
+                          if not roots:
+                              continue
+                          print("  Python packages found: %s"
+                                % ", ".join(sorted(os.path.basename(r) for r in roots)))
+                          for name, ents in files.items():
+                              if not name.endswith(EXTS):
+                                  continue
+                              for r in roots:
+                                  if name.startswith(r + "/"):
+                                      dest = os.path.join(OUT, os.path.basename(r), name[len(r) + 1:])
+                                      if os.path.exists(dest):
+                                          break
+                                      os.makedirs(os.path.dirname(dest), exist_ok=True)
+                                      with open(dest, "wb") as out:
+                                          for off, ln, prefix in ents:
+                                              f.seek(off)
+                                              out.write(prefix + f.read(ln))
+                                      total += 1
+                                      break
+                  except Exception as e:
+                      print("  WARNING: could not read %s (%s)" % (rel, e))
+              print("Extracted %d Python files to python-packages/" % total)
+
+
+          main()
+          PYEOF
+          python3 "$RUNNER_TEMP/expose_rpa.py" "$RUNNER_TEMP/proj/game"
+
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
