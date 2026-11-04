@@ -302,6 +302,14 @@ jobs:
                   print("::warning::Some .pyc files were compiled for a different Python than Ren'Py's and cannot be imported.")
           PYEOF
 
+          # Can plain Python (the SDK's own) import each package from that folder?
+          # "No module named '<pkg>'" = not importable; any other error = it was found.
+          for d in "$PP"/*/; do
+            name="$(basename "$d")"
+            echo "--- import test: $name"
+            PYTHONPATH="$PP" "$PY" -c "import $name; print('imported OK')" 2>&1 | tail -n 3 || true
+          done
+
       # Optional: only installs if the user attached the Cubism SDK zip
       # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
       - name: Install Live2D Cubism Core (if zip provided)
@@ -347,6 +355,12 @@ jobs:
           cd "$RUNNER_TEMP/renpy-${V}-sdk"
 
           chmod +x renpy.sh lib/*/renpy lib/*/python* 2>/dev/null || true
+
+          # Make packages extracted from .rpa archives importable at launch
+          if [ -d "$RUNNER_TEMP/proj/game/python-packages" ]; then
+            export PYTHONPATH="$RUNNER_TEMP/proj/game/python-packages${PYTHONPATH:+:$PYTHONPATH}"
+            echo "PYTHONPATH=$PYTHONPATH"
+          fi
 
           ./renpy.sh launcher ios_create \
             "$RUNNER_TEMP/proj" \
