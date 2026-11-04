@@ -28,11 +28,9 @@ No local Mac or Xcode installation required. Simply provide your game name, Ren'
 
 ### 1. Add the workflow
 
-Create the following file in your repository:
+Clone the repo or simply copy the  following file to your repository:
 
 `.github/workflows/build-ios.yml`
-
-Paste the universal workflow into it and commit your changes.
 
 ### 2. Prepare your game
 
