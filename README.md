@@ -130,6 +130,8 @@ A valid signing method and provisioning profile may be required.
 - **Motel Heat** (tested with SDK 8.5.0)
 - **Edgefield** (tested with SDK 8.3.6)
 
+> All tested games worked perfectly on iPhone 15 Pro
+
 ## License
 
 This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses. The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
