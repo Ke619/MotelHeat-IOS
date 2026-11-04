@@ -123,6 +123,13 @@ A valid signing method and provisioning profile may be required.
 - Existing save files are excluded from the build.
 - Workflow artifacts are retained for 14 days by default.
 
+## Tested Games
+
+- Summertime Saga (tested with SDK 8.5.3)
+- Beast Control (tested with SDK 8.3.6 even though the game's original SDK is 8.3.0 which didn't work in the workflow.)
+- Motel Heat (tested with SDK 8.5.0)
+- Edgefield (tested with SDK 8.3.6)
+
 ## License
 
 This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses. The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
