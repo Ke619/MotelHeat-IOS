@@ -257,6 +257,51 @@ jobs:
 
           ls "renpy-${V}-sdk"
 
+      # Diagnostic only: shows what was extracted and whether any compiled
+      # (.pyc) files match the Python version inside this Ren'Py SDK.
+      - name: Check extracted Python packages
+        run: |
+          set -euo pipefail
+
+          PP="$RUNNER_TEMP/proj/game/python-packages"
+          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
+
+          if [ ! -d "$PP" ]; then
+            echo "No python-packages folder; nothing to check."
+            exit 0
+          fi
+
+          echo "Top level of python-packages:"
+          ls "$PP"
+          echo "File types:"
+          find "$PP" -type f | sed 's/.*\.//' | sort | uniq -c
+
+          chmod +x "$SDK"/lib/py3-mac-universal/python* 2>/dev/null || true
+          PY="${CHECK_PYTHON:-$SDK/lib/py3-mac-universal/pythonw}"
+
+          "$PY" - "$PP" <<'PYEOF' || echo "(check could not run; continuing)"
+          import sys, os, importlib.util
+          pp = sys.argv[1]
+          magic = importlib.util.MAGIC_NUMBER
+          print("Ren'Py's Python:", sys.version.split()[0], "- bytecode magic:", magic.hex())
+          seen, bad, n = {}, 0, 0
+          for root, _, names in os.walk(pp):
+              for name in names:
+                  if name.endswith(".pyc"):
+                      n += 1
+                      with open(os.path.join(root, name), "rb") as f:
+                          m = f.read(4)
+                      seen[m.hex()] = seen.get(m.hex(), 0) + 1
+                      if m != magic:
+                          bad += 1
+          if n == 0:
+              print(".pyc files: none (source .py files only)")
+          else:
+              print(".pyc files: %d, wrong Python version: %d, magic numbers seen: %s" % (n, bad, seen))
+              if bad:
+                  print("::warning::Some .pyc files were compiled for a different Python than Ren'Py's and cannot be imported.")
+          PYEOF
+
       # Optional: only installs if the user attached the Cubism SDK zip
       # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
       - name: Install Live2D Cubism Core (if zip provided)
