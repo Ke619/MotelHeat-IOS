@@ -55,7 +55,6 @@ If your game uses Live2D models, Ren'Py needs the Live2D Cubism Core library to 
 5. **Go to `Actions` tab and run the workflow.**
 
 >[!IMPORTANT]
-> The Cubism zip is large, so attach it to the release rather than committing it to the repository.
 > Private repositories use GitHub Actions minutes, and macOS minutes are billed at a higher rate than Linux ones. Check your plan's allowance.
 
 ## Building
