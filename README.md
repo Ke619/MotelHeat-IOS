@@ -54,10 +54,9 @@ If your game uses Live2D models, Ren'Py needs the Live2D Cubism Core library to 
 4. **Attach the zip, unchanged, to the same release as `game.zip`.** Its name must start with `CubismSdkForNative` (for example `CubismSdkForNative-5-r.4.1.zip`).
 5. **Go to `Actions` tab and run the workflow.**
 
-Notes:
-
-- The Cubism zip is large, so attach it to the release rather than committing it to the repository.
-- Private repositories use GitHub Actions minutes, and macOS minutes are billed at a higher rate than Linux ones. Check your plan's allowance.
+>[!NOTES]
+> The Cubism zip is large, so attach it to the release rather than committing it to the repository.
+> Private repositories use GitHub Actions minutes, and macOS minutes are billed at a higher rate than Linux ones. Check your plan's allowance.
 
 ## Building
 
