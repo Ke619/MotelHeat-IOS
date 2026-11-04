@@ -8,6 +8,10 @@ No local Mac or Xcode installation required. Simply provide your game name, Ren'
 ![Platform](https://img.shields.io/badge/Platform-iOS-lightgrey?logo=apple)
 ![Ren'Py](https://img.shields.io/badge/Engine-Ren'Py-red)
 
+<p align="center">
+  <img src="IMG_9369.png" width="250">
+</p>
+
 ## Features
 
 - **Universal:** Build different Ren'Py games using the same workflow.
