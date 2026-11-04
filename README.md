@@ -9,7 +9,7 @@ No local Mac or Xcode installation required. Simply provide your game name, Ren'
 ![Ren'Py](https://img.shields.io/badge/Engine-Ren'Py-red)
 
 <p align="center">
-  <img src="IMG_9369.png" width="250">
+  <img src="logo/IMG_9369.png" width="250">
 </p>
 
 ## Features
