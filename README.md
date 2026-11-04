@@ -112,6 +112,7 @@ A valid signing method and provisioning profile may be required.
 ## Notes
 
 - The selected SDK should match the version used to develop the game.
+>Sometimes the rule doesn't apply if the original SDK is too old. Try with newer ones.
 - Native extensions and additional dependencies may require modifications to the workflow.
 - The game name determines the output filename, not necessarily the installed app's display name.
 - Existing save files are excluded from the build.
