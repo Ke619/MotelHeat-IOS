@@ -124,12 +124,13 @@ A valid signing method and provisioning profile may be required.
 
 ## Tested Games
 
-- **Summertime Saga** (tested with SDK 8.5.3)
-- **Beast Control** (tested with SDK 8.3.6 even though the game's original SDK is 8.3.0 which failed to build with the workflow)
-- **Motel Heat** (tested with SDK 8.5.0)
-- **Edgefield** (tested with SDK 8.3.6)
-
-> All tested games worked perfectly on iPhone 15 Pro
+| Game | Original SDK | Workflow SDK | Works? |
+|---|---|---|---|
+| Summertime Saga | 8.5.3 | 8.5.3 | ✅ Yes |
+| Beast Control | 8.3.0 | 8.3.6 | ✅ Yes |
+| Motel Heat | 8.5.0 | 8.5.0 | ✅ Yes |
+| Edgefield | 8.3.6 | 8.3.6 | ✅ Yes |
+| Monster Girl Tavern | 8.5.4 | 8.5.3 | ✅ Yes |
 
 ## License
 
