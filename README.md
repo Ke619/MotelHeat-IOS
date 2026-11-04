@@ -38,8 +38,6 @@ Locate your Ren'Py project's `game` folder and compress it into:
 
 `game.zip`
 
-Make sure the archive contains the game's scripts, images, audio, archives, and other required assets.
-
 ### 3. Create a release
 
 Create a GitHub Release and attach `game.zip`.
