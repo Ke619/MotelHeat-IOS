@@ -125,10 +125,10 @@ A valid signing method and provisioning profile may be required.
 
 ## Tested Games
 
-- Summertime Saga (tested with SDK 8.5.3)
-- Beast Control (tested with SDK 8.3.6 even though the game's original SDK is 8.3.0 which failed to build with the workflow)
-- Motel Heat (tested with SDK 8.5.0)
-- Edgefield (tested with SDK 8.3.6)
+- **Summertime Saga** (tested with SDK 8.5.3)
+- **Beast Control** (tested with SDK 8.3.6 even though the game's original SDK is 8.3.0 which failed to build with the workflow)
+- **Motel Heat** (tested with SDK 8.5.0)
+- **Edgefield** (tested with SDK 8.3.6)
 
 ## License
 
