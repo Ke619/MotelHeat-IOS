@@ -17,7 +17,7 @@ No local Mac or Xcode installation required. Provide your game name, Ren'Py SDK 
 - **Universal:** Build different Ren'Py games using the same workflow.
 - **Two workflows:** One for Ren'Py 8 games (Python 3) and one for Ren'Py 7 games (Python 2). See [Which workflow do I need?](#which-workflow-do-i-need)
 - **Configurable:** Choose the Ren'Py SDK version.
-- **Live2D support:** Optional, in the Ren'Py 8 workflow, using a Cubism SDK zip you provide (see [Live2D games](#live2d-games)).
+- **Live2D support:** when necessary, using a Cubism SDK zip you provide (see [Live2D games](#live2d-games)).
 - **Automated:** Downloads game assets and prepares the Xcode project.
 - **Unsigned builds:** No Apple Developer certificate required during compilation.
 - **Cloud-based:** Builds run on GitHub-hosted macOS runners.
