@@ -1,4 +1,4 @@
-name: Universal Ren'Py iOS Builder
+name: Universal Ren'Py 8 iOS Builder
 
 on:
   workflow_dispatch:
