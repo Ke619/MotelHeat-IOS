@@ -164,6 +164,7 @@ If a build fails, scroll up to find the **first** error in the log. Later errors
 | Another Chance | 7.4.4 | 7.8.7 | ⚠️ Crashes |
 | Sakura Dungeon | 6.99.10 | 7.8.7 | ✅ Yes |
 | Picture of You | 7.5.0 | 7.8.7 | ⚠️ Crashes |
+| Boyfriend to Death | 6.99.10 | 7.8.7 | ❌ No |
 
 ## License
 
