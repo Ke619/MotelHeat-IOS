@@ -162,6 +162,7 @@ If a build fails, scroll up to find the **first** error in the log. Later errors
 | Edgefield | 8.3.6 | 8.3.6 | ✅ Yes |
 | Monster Girl Tavern | 8.5.4 | 8.5.3 | ✅ Yes |
 | Another Chance | 7.4.4 | 7.8.7 | ✅ Yes |
+| Sakura Dungeon | 6.99.10 | 7.8.7 | ✅ Yes |
 
 ## License
 
