@@ -97,7 +97,7 @@ Go to **Actions**, choose the workflow that matches your game, and click **Run w
 
 Once submitted, GitHub Actions will automatically:
 
-1. Download the game assets (and the Cubism zip, if present, on Ren'Py 8).
+1. Download the game assets (and the `Cubism.zip`, if present, on Ren'Py 8).
 2. Extract and prepare the Ren'Py project.
 3. Download the specified Ren'Py SDK and iOS support package.
 4. Install Live2D Cubism Core, if you provided it (Ren'Py 8 only).
