@@ -254,6 +254,30 @@ jobs:
 
           mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
 
+          # In Ren'Py 7.x the iOS code borrows a helper class from RAPT (the
+          # Android packaging module). If the SDK has no rapt folder, the
+          # launcher sets rapt = None and ios_create crashes with
+          # "'NoneType' object has no attribute 'interface'".
+          if [ ! -d "renpy-${V}-sdk/rapt" ]; then
+            echo "SDK has no rapt folder; downloading RAPT"
+            curl -fL -o rapt.zip \
+              "https://www.renpy.org/dl/${V}/renpy-${V}-rapt.zip"
+
+            mkdir rapt-tmp
+            unzip -q rapt.zip -d rapt-tmp
+
+            if [ -d rapt-tmp/buildlib ]; then
+              RAPT_DIR=rapt-tmp
+            else
+              RAPT_DIR="$(find rapt-tmp -mindepth 1 -maxdepth 1 -type d | head -n1)"
+            fi
+
+            mv "$RAPT_DIR" "renpy-${V}-sdk/rapt"
+          fi
+
+          echo "=== rapt folder ==="
+          ls "renpy-${V}-sdk/rapt"
+
           echo "=== SDK top level ==="
           ls "renpy-${V}-sdk"
           echo "=== SDK lib ==="
