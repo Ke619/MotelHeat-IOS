@@ -395,6 +395,46 @@ jobs:
 
           find "$RUNNER_TEMP/xcode" -maxdepth 3 | head -50
 
+      # Diagnostic only (never fails the build). Added to track down the
+      # "Undefined symbols: _main" link error: it shows which source files the
+      # project has, where main() is defined, and what the prebuilt libraries
+      # contain.
+      - name: Diagnose Xcode project
+        run: |
+          set +e
+          cd "$RUNNER_TEMP/xcode"
+
+          echo "=== Top level ==="
+          ls -la
+
+          echo "=== Source files (depth 2) ==="
+          find . -maxdepth 2 \( -name '*.m' -o -name '*.mm' -o -name '*.c' \) | head -50
+
+          echo "=== Source files that define main ==="
+          grep -rnE --include='*.m' --include='*.mm' --include='*.c' \
+            '(^|[^_A-Za-z0-9])main[[:space:]]*\(' . | head -20
+
+          echo "=== Files in the Sources build phase ==="
+          grep -n "in Sources" ./*.xcodeproj/project.pbxproj | head -30
+
+          echo "=== prebuilt folder ==="
+          ls -la prebuilt 2>/dev/null
+          ls -la prebuilt/release 2>/dev/null | head -60
+
+          echo "=== Architectures of prebuilt libs ==="
+          for L in prebuilt/release/*.a; do
+            [ -f "$L" ] || continue
+            lipo -info "$L" 2>&1 | sed "s|^|$L: |"
+          done
+
+          echo "=== Prebuilt libs that define _main or _SDL_main ==="
+          for L in prebuilt/release/*.a; do
+            [ -f "$L" ] || continue
+            nm -g "$L" 2>/dev/null | grep -E ' [TS] _(SDL_)?main$' | sed "s|^|$L: |"
+          done
+
+          exit 0
+
       - name: Build with Xcode (unsigned)
         run: |
           set -euo pipefail
