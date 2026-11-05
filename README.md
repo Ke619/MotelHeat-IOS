@@ -64,8 +64,6 @@ Locate your Ren'Py project's `game` folder and compress it into:
 
 `game.zip`
 
-If your game ships its scripts and assets in an `archive.rpa`, include it inside the `game` folder, or attach it to the release as a separate file named `archive.rpa`.
-
 ### 3. Create a release
 
 Create a GitHub Release and attach `game.zip`.
