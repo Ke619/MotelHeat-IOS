@@ -1,4 +1,4 @@
-name: Ren'Py 7 iOS Builder
+name: Ren'Py 7 iOS Builder (BTD)
 
 on:
   workflow_dispatch:
