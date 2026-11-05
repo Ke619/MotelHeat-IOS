@@ -58,6 +58,13 @@ jobs:
             --dir "$RUNNER_TEMP/dl" \
             --clobber || echo "No separate archive.rpa found"
 
+          # Optional: Live2D Cubism SDK zip attached to the same release
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "CubismSdkForNative*.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No Cubism zip in release; assuming no Live2D"
+
           ls -lh "$RUNNER_TEMP/dl"
 
       - name: Assemble Ren'Py project
@@ -358,6 +365,51 @@ jobs:
             PYTHONPATH="$PP" "$PY" -c "import $name; print('imported OK')" 2>&1 | tail -n 3 || true
           done
 
+      # Optional: only installs if the user attached the Cubism SDK zip
+      # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
+      # Ren'Py 7.5 and later support Live2D; earlier 7.x SDKs do not.
+      - name: Install Live2D Cubism Core (if zip provided)
+        run: |
+          set -euo pipefail
+
+          ZIP="$(find "$RUNNER_TEMP/dl" -maxdepth 1 -name 'CubismSdkForNative*.zip' | head -n1 || true)"
+          if [ -z "$ZIP" ]; then
+            echo "No Cubism zip in release; assuming the game doesn't use Live2D."
+            exit 0
+          fi
+
+          cd "$RUNNER_TEMP"
+          rm -rf cubism && mkdir cubism
+          unzip -q "$ZIP" -d cubism
+          CORE="$(find cubism -type d -name Core -path '*CubismSdkForNative*' | head -n1)"
+          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
+
+          # Desktop library, needed so ios_create can launch the project.
+          # The folder is py2-mac-universal on 7.8.x; find it instead of hardcoding.
+          MACLIB="$(ls -d "$SDK"/lib/*mac* 2>/dev/null | head -n1 || true)"
+          if [ -z "$MACLIB" ]; then
+            echo "::error::No macOS lib folder found in the SDK."
+            exit 1
+          fi
+          cp "$CORE/dll/macos/libLive2DCubismCore.dylib" "$MACLIB/"
+
+          # iOS device library for the Xcode build
+          # NOTE: destination is unverified for 7.x; if Xcode fails with a linker
+          # error about Live2DCubismCore, this path needs adjusting.
+          mkdir -p "$SDK/renios/prototype/Live2D"
+          cp "$CORE/lib/ios/Release-iphoneos/libLive2DCubismCore.a" "$SDK/renios/prototype/Live2D/"
+
+          # Remembered for the Xcode step, which links it into the app
+          echo "LIVE2D_IOS_LIB=$SDK/renios/prototype/Live2D/libLive2DCubismCore.a" >> "$GITHUB_ENV"
+
+          ls "$MACLIB" | grep -i live2d
+
+          # Cubism Core 06 (SDK 5-r.5+) renamed an API that Ren'Py still needs
+          if ! strings -a "$MACLIB/libLive2DCubismCore.dylib" | grep -q csmGetDrawableRenderOrders; then
+            echo "::error::This Cubism SDK is too new for Ren'Py (missing csmGetDrawableRenderOrders). Attach CubismSdkForNative 5-r.4.1 or older to the release."
+            exit 1
+          fi
+
       - name: Generate Xcode project
         # The runner has no display. ios_create launches the project once with
         # "quit", which still initializes a window; the dummy drivers let that
@@ -526,6 +578,20 @@ jobs:
           # the two most likely failures: bitcode (removed from Xcode) and the
           # 32-bit armv7 slice (no longer buildable). If the build still fails,
           # the first compiler or linker error in this log says why.
+
+          # Live2D: Ren'Py looks up the Cubism functions inside the app binary,
+          # so the static library must be force-linked into it.
+          EXTRA=()
+          if [ -n "${LIVE2D_IOS_LIB:-}" ] && [ -f "$LIVE2D_IOS_LIB" ]; then
+            echo "Force-linking $LIVE2D_IOS_LIB"
+            # Keep every Cubism function alive (-u marks it as required) while
+            # leaving normal dead-stripping on for everything else
+            UFLAGS="$(nm -gU "$LIVE2D_IOS_LIB" 2>/dev/null |
+              awk '$2=="T" && $3 ~ /^_csm/ {printf " -Wl,-u,%s", $3}')"
+            echo "Keeping $(echo "$UFLAGS" | grep -o -- '-u,' | wc -l | tr -d ' ') Cubism symbols"
+            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB$UFLAGS")
+          fi
+
           xcodebuild \
             -project "$PROJ" \
             -scheme "$SCHEME" \
@@ -539,7 +605,28 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            ${EXTRA[@]+"${EXTRA[@]}"} \
             build
+
+      - name: Verify Live2D is linked into the app
+        if: ${{ env.LIVE2D_IOS_LIB != '' }}
+        run: |
+          set -euo pipefail
+
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
+            -maxdepth 2 -name '*.app' -type d | head -n1)"
+          EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          echo "Binary: $EXE"
+          ls -lh "$EXE"
+
+          nm -g "$EXE" > "$RUNNER_TEMP/nm.txt" 2>&1 || true
+          echo "--- Cubism symbols in the symbol table:"
+          grep -c -i csmGetVersion "$RUNNER_TEMP/nm.txt" || true
+
+          if ! grep -q csmGetVersion "$RUNNER_TEMP/nm.txt"; then
+            echo "::error::Cubism Core was not linked into the app binary."
+            exit 1
+          fi
 
       - name: Package unsigned IPA
         run: |
