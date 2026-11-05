@@ -166,6 +166,13 @@ If a build fails, scroll up to find the **first** error in the log. Later errors
 | Picture of You | 7.5.0 | 7.8.7 | ⚠️ Crashes |
 | Boyfriend to Death | 6.99.10 | 7.8.7 | ❌ No |
 
+### 🔍 Additional References
+*Looking for general info on how specific titles behave on mobile or want to check engine/script compatibility?* You can browse the independent [Renpy Pocket Compatibility List](https://renpypocket.renpyios.app/compatibility/). 
+
+> *Note: That website is an external project and is not affiliated with this repository or these native standalone ports.*
+
+___
+
 ## License
 
 - This project is a build tool provided for educational and personal use. Games listed were used only to test the workflow. This repo hosts no game files. All games belong to their owners.
