@@ -169,7 +169,7 @@ If a build fails, scroll up to find the **first** error in the log. Later errors
 ### 🔍 Additional References
 *Looking for general info on how specific titles behave on mobile or want to check engine/script compatibility?* You can browse the independent [Renpy Pocket Compatibility List](https://renpypocket.renpyios.app/compatibility/). 
 
-> *Note: That website is an external project and is not affiliated with this repository or these native standalone ports.*
+> *Note: That website is an external project and is not affiliated with this repository.*
 
 ___
 
