@@ -43,7 +43,7 @@ If you are not sure which one your game uses:
 
 ## Requirements
 
-- A GitHub repository with Actions enabled.
+- A **Private GitHub** repository with Actions enabled.
 - A Ren'Py game compatible with the selected SDK.
 - A `game.zip` archive containing your game's `game` folder.
 
