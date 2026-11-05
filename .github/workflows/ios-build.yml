@@ -1,0 +1,556 @@
+name: Universal Ren'Py iOS Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      game_name:
+        description: "Name of the game"
+        required: true
+        type: string
+      renpy_version:
+        description: "Ren'Py SDK version"
+        required: true
+        default: "8.3.6"
+        type: string
+      release_tag:
+        description: "GitHub Release tag containing game.zip"
+        required: true
+        default: "1.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      V: ${{ inputs.renpy_version }}
+      GAME: ${{ inputs.game_name }}
+
+    steps:
+      - name: Download game assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$RUNNER_TEMP/dl"
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "game.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber
+
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "archive.rpa" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No separate archive.rpa found"
+
+          # Optional: Live2D Cubism SDK zip attached to the same release
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "CubismSdkForNative*.zip" \
+            --dir "$RUNNER_TEMP/dl" \
+            --clobber || echo "No Cubism zip in release; assuming no Live2D"
+
+          ls -lh "$RUNNER_TEMP/dl"
+
+      - name: Assemble Ren'Py project
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP"
+
+          mkdir -p unz proj
+
+          unzip -q dl/game.zip -d unz
+          rm -rf unz/__MACOSX
+
+          shallowest() {
+            find unz -type f -name "$1" |
+              awk '{print gsub("/","/"), $0}' |
+              sort -n |
+              head -n1 |
+              cut -d' ' -f2-
+          }
+
+          MARK="$(shallowest options.rpyc)"
+
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest script.rpyc)"
+          fi
+
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest archive.rpa)"
+          fi
+
+          # Games split into several archives (art.rpa, src.rpa, ...)
+          if [ -z "$MARK" ]; then
+            MARK="$(shallowest '*.rpa')"
+          fi
+
+          if [ -z "$MARK" ]; then
+            echo "Could not find Ren'Py game files"
+            find unz | head -50
+            exit 1
+          fi
+
+          GAME_DIR="$(dirname "$MARK")"
+
+          echo "Game directory: $GAME_DIR"
+
+          cp -R "$GAME_DIR" proj/game
+
+          rm -rf proj/game/cache proj/game/saves
+
+          if [ -f dl/archive.rpa ]; then
+            cp dl/archive.rpa proj/game/archive.rpa
+          fi
+
+          if [ ! -f proj/game/archive.rpa ]; then
+            RPA="$(find unz -type f -name archive.rpa | head -n1 || true)"
+
+            if [ -n "$RPA" ]; then
+              cp "$RPA" proj/game/archive.rpa
+            fi
+          fi
+
+          echo "=== Game files ==="
+          du -sh proj/game
+          ls -lh proj/game | head -50
+
+      # Some games keep Python packages inside .rpa archives. Copy them out to
+      # game/python-packages/ so Ren'Py can always import them. Also prints what
+      # each archive contains, which helps when a game fails to start.
+      - name: Inspect .rpa archives and expose Python packages
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/expose_rpa.py" <<'PYEOF'
+          """Scan .rpa archives in the game folder, report their contents, and copy any
+          Python packages (folders containing __init__.py) out onto disk under
+          game/python-packages/, where Ren'Py always finds them."""
+          import os, sys, zlib, pickle
+
+          GAME = sys.argv[1]
+          OUT = os.path.join(GAME, "python-packages")
+          EXTS = (".py", ".pyc")
+
+
+          def read_index(f):
+              f.seek(0)
+              parts = f.readline().decode("latin1").split()
+              magic = parts[0] if parts else ""
+              if magic == "RPA-3.0":
+                  offset, key = int(parts[1], 16), int(parts[2], 16)
+              elif magic == "RPA-3.2":
+                  offset, key = int(parts[1], 16), 0
+                  for p in parts[3:]:
+                      key ^= int(p, 16)
+              elif magic == "RPA-2.0":
+                  offset, key = int(parts[1], 16), None
+              else:
+                  raise ValueError("unsupported archive format: %r" % magic)
+              f.seek(offset)
+              # Archives come from the user's own release; the index is a plain pickle.
+              index = pickle.loads(zlib.decompress(f.read()), encoding="latin1")
+              files = {}
+              for name, entries in index.items():
+                  if isinstance(name, bytes):
+                      name = name.decode("utf-8", "replace")
+                  ents = []
+                  for e in entries:
+                      off, ln = e[0], e[1]
+                      prefix = e[2] if len(e) > 2 else b""
+                      if key is not None:
+                          off ^= key
+                          ln ^= key
+                      if isinstance(prefix, str):
+                          prefix = prefix.encode("latin1")
+                      ents.append((off, ln, prefix))
+                  files[name.replace("\\", "/")] = ents
+              return files
+
+
+          def main():
+              archives = []
+              for root, _, names in os.walk(GAME):
+                  for n in names:
+                      if n.lower().endswith(".rpa"):
+                          archives.append(os.path.join(root, n))
+              if not archives:
+                  print("No .rpa archives found.")
+                  return
+
+              total = 0
+              for path in sorted(archives):
+                  rel = os.path.relpath(path, GAME)
+                  try:
+                      with open(path, "rb") as f:
+                          files = read_index(f)
+                          tops = sorted({n.split("/")[0] for n in files if "/" in n})
+                          print("%s: %d files; top-level folders: %s"
+                                % (rel, len(files), ", ".join(tops[:15]) or "(none)"))
+
+                          inits = {os.path.dirname(n) for n in files
+                                   if os.path.basename(n) in ("__init__.py", "__init__.pyc")}
+                          roots = {d for d in inits
+                                   if d and os.path.dirname(d) not in inits
+                                   and d != "renpy" and not d.startswith("python-packages")}
+                          if not roots:
+                              continue
+                          print("  Python packages found: %s"
+                                % ", ".join(sorted(os.path.basename(r) for r in roots)))
+                          for name, ents in files.items():
+                              if not name.endswith(EXTS):
+                                  continue
+                              for r in roots:
+                                  if name.startswith(r + "/"):
+                                      dest = os.path.join(OUT, os.path.basename(r), name[len(r) + 1:])
+                                      if os.path.exists(dest):
+                                          break
+                                      os.makedirs(os.path.dirname(dest), exist_ok=True)
+                                      with open(dest, "wb") as out:
+                                          for off, ln, prefix in ents:
+                                              f.seek(off)
+                                              out.write(prefix + f.read(ln))
+                                      total += 1
+                                      break
+                  except Exception as e:
+                      print("  WARNING: could not read %s (%s)" % (rel, e))
+              print("Extracted %d Python files to python-packages/" % total)
+
+
+          main()
+          PYEOF
+          python3 "$RUNNER_TEMP/expose_rpa.py" "$RUNNER_TEMP/proj/game"
+
+      # This is game-specific at runtime: the compatibility file is created
+      # only if a direct time.clock() call is detected in a .rpy or .rpyc file.
+      # Games without that call receive no additional file.
+      - name: Detect and patch legacy time.clock()
+        run: |
+          set -euo pipefail
+
+          GAME_DIR="$RUNNER_TEMP/proj/game"
+          PATCH="$GAME_DIR/zz_time_clock_compat.rpy"
+
+          python3 - "$GAME_DIR" "$PATCH" <<'PYEOF'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          game_dir, patch_path = sys.argv[1:3]
+
+          # Match the actual call, not merely the words "time" and "clock".
+          pattern = re.compile(r"time\s*\.\s*clock\s*\(")
+          matches = []
+
+          for root, _, files in os.walk(game_dir):
+              for filename in files:
+                  path = os.path.join(root, filename)
+                  ext = os.path.splitext(filename)[1].lower()
+
+                  if ext == ".rpy":
+                      try:
+                          with open(path, "r", encoding="utf-8", errors="replace") as f:
+                              content = f.read()
+                          if pattern.search(content):
+                              matches.append(path)
+                      except OSError as e:
+                          print("WARNING: Could not scan %s: %s" % (path, e))
+
+                  elif ext == ".rpyc":
+                      # Compiled scripts can retain source strings. This is a
+                      # best-effort fallback; source .rpy scanning is more reliable.
+                      try:
+                          result = subprocess.run(
+                              ["strings", "-a", path],
+                              capture_output=True,
+                              text=True,
+                              check=False
+                          )
+                          if pattern.search(result.stdout):
+                              matches.append(path)
+                      except OSError as e:
+                          print("WARNING: Could not inspect %s: %s" % (path, e))
+
+          # Do not leave a stale generated patch in the project.
+          if os.path.exists(patch_path):
+              os.remove(patch_path)
+
+          if matches:
+              print("Detected legacy time.clock() usage:")
+              for path in matches:
+                  print(" - " + os.path.relpath(path, game_dir))
+
+              with open(patch_path, "w", encoding="utf-8") as f:
+                  f.write(
+                      "init -999 python:\n"
+                      "    import time\n"
+                      "    if not hasattr(time, 'clock'):\n"
+                      "        time.clock = time.perf_counter\n"
+                  )
+
+              print("Compatibility patch created: " + patch_path)
+          else:
+              print("No direct time.clock() calls detected.")
+              print("No compatibility patch created; game files remain unchanged.")
+          PYEOF
+
+      - name: Download Ren'Py SDK and iOS support
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP"
+
+          curl -fL -o sdk.zip \
+            "https://www.renpy.org/dl/${V}/renpy-${V}-sdk.zip"
+
+          unzip -q sdk.zip
+
+          curl -fL -o renios.zip \
+            "https://www.renpy.org/dl/${V}/renpy-${V}-renios.zip"
+
+          mkdir renios-tmp
+          unzip -q renios.zip -d renios-tmp
+
+          RENIOS_DIR="$(find renios-tmp -mindepth 1 -maxdepth 1 -type d -name 'renios*' | head -n1)"
+
+          if [ -z "$RENIOS_DIR" ]; then
+            RENIOS_DIR=renios-tmp
+          fi
+
+          mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
+
+          ls "renpy-${V}-sdk"
+
+      # Diagnostic only: shows what was extracted and whether any compiled
+      # (.pyc) files match the Python version inside this Ren'Py SDK.
+      - name: Check extracted Python packages
+        run: |
+          set -euo pipefail
+
+          PP="$RUNNER_TEMP/proj/game/python-packages"
+          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
+
+          if [ ! -d "$PP" ]; then
+            echo "No python-packages folder; nothing to check."
+            exit 0
+          fi
+
+          echo "Top level of python-packages:"
+          ls "$PP"
+          echo "File types:"
+          find "$PP" -type f | sed 's/.*\.//' | sort | uniq -c
+
+          chmod +x "$SDK"/lib/py3-mac-universal/python* 2>/dev/null || true
+          PY="${CHECK_PYTHON:-$SDK/lib/py3-mac-universal/pythonw}"
+
+          "$PY" - "$PP" <<'PYEOF' || echo "(check could not run; continuing)"
+          import sys, os, importlib.util
+          pp = sys.argv[1]
+          magic = importlib.util.MAGIC_NUMBER
+          print("Ren'Py's Python:", sys.version.split()[0], "- bytecode magic:", magic.hex())
+          seen, bad, n = {}, 0, 0
+          for root, _, names in os.walk(pp):
+              for name in names:
+                  if name.endswith(".pyc"):
+                      n += 1
+                      with open(os.path.join(root, name), "rb") as f:
+                          m = f.read(4)
+                      seen[m.hex()] = seen.get(m.hex(), 0) + 1
+                      if m != magic:
+                          bad += 1
+          if n == 0:
+              print(".pyc files: none (source .py files only)")
+          else:
+              print(".pyc files: %d, wrong Python version: %d, magic numbers seen: %s" % (n, bad, seen))
+              if bad:
+                  print("::warning::Some .pyc files were compiled for a different Python than Ren'Py's and cannot be imported.")
+          PYEOF
+
+          # Can plain Python (the SDK's own) import each package from that folder?
+          # "No module named '<pkg>'" = not importable; any other error = it was found.
+          for d in "$PP"/*/; do
+            name="$(basename "$d")"
+            echo "--- import test: $name"
+            PYTHONPATH="$PP" "$PY" -c "import $name; print('imported OK')" 2>&1 | tail -n 3 || true
+          done
+
+      # Optional: only installs if the user attached the Cubism SDK zip
+      # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
+      - name: Install Live2D Cubism Core (if zip provided)
+        run: |
+          set -euo pipefail
+
+          ZIP="$(find "$RUNNER_TEMP/dl" -maxdepth 1 -name 'CubismSdkForNative*.zip' | head -n1 || true)"
+          if [ -z "$ZIP" ]; then
+            echo "No Cubism zip in release; assuming the game doesn't use Live2D."
+            exit 0
+          fi
+
+          cd "$RUNNER_TEMP"
+          rm -rf cubism && mkdir cubism
+          unzip -q "$ZIP" -d cubism
+          CORE="$(find cubism -type d -name Core -path '*CubismSdkForNative*' | head -n1)"
+          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
+
+          # Desktop library, needed so ios_create can launch the project
+          cp "$CORE/dll/macos/libLive2DCubismCore.dylib" "$SDK/lib/py3-mac-universal/"
+
+          # iOS device library for the Xcode build
+          # NOTE: destination is unverified; if Xcode fails with a linker error
+          # about Live2DCubismCore, this path needs adjusting.
+          mkdir -p "$SDK/renios/prototype/Live2D"
+          cp "$CORE/lib/ios/Release-iphoneos/libLive2DCubismCore.a" "$SDK/renios/prototype/Live2D/"
+
+          # Remembered for the Xcode step, which links it into the app
+          echo "LIVE2D_IOS_LIB=$SDK/renios/prototype/Live2D/libLive2DCubismCore.a" >> "$GITHUB_ENV"
+
+          ls "$SDK/lib/py3-mac-universal" | grep -i live2d
+
+          # Cubism Core 06 (SDK 5-r.5+) renamed an API that Ren'Py still needs
+          if ! strings -a "$SDK/lib/py3-mac-universal/libLive2DCubismCore.dylib" | grep -q csmGetDrawableRenderOrders; then
+            echo "::error::This Cubism SDK is too new for Ren'Py (missing csmGetDrawableRenderOrders). Attach CubismSdkForNative 5-r.4.1 or older to the release."
+            exit 1
+          fi
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/renpy-${V}-sdk"
+
+          chmod +x renpy.sh lib/*/renpy lib/*/python* 2>/dev/null || true
+
+          # Make packages extracted from .rpa archives importable at launch
+          if [ -d "$RUNNER_TEMP/proj/game/python-packages" ]; then
+            export PYTHONPATH="$RUNNER_TEMP/proj/game/python-packages${PYTHONPATH:+:$PYTHONPATH}"
+            echo "PYTHONPATH=$PYTHONPATH"
+          fi
+
+          # Also place them in the SDK's own Python library folder, which Ren'Py
+          # always searches (its standard library lives there)
+          if [ -d "$RUNNER_TEMP/proj/game/python-packages" ]; then
+            ls "$RUNNER_TEMP/renpy-${V}-sdk/lib"
+            for LIBDIR in "$RUNNER_TEMP/renpy-${V}-sdk"/lib/python3*; do
+              [ -d "$LIBDIR" ] || continue
+              cp -R "$RUNNER_TEMP/proj/game/python-packages/." "$LIBDIR/"
+              echo "Copied packages into $LIBDIR"
+            done
+          fi
+
+          ./renpy.sh launcher ios_create \
+            "$RUNNER_TEMP/proj" \
+            "$RUNNER_TEMP/xcode"
+
+          find "$RUNNER_TEMP/xcode" -maxdepth 3 | head -50
+
+      - name: Build with Xcode (unsigned)
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/xcode"
+
+          PROJ="$(find . -maxdepth 3 -name '*.xcodeproj' | head -n1)"
+
+          if [ -z "$PROJ" ]; then
+            echo "Xcode project not found"
+            exit 1
+          fi
+
+          xcodebuild -list -project "$PROJ"
+
+          SCHEME="$(xcodebuild -list -project "$PROJ" -json |
+            python3 -c "import json,sys; print(json.load(sys.stdin)['project']['schemes'][0])")"
+
+          echo "Building scheme: $SCHEME"
+
+          # Live2D: Ren'Py looks up the Cubism functions inside the app binary,
+          # so the static library must be force-linked into it.
+          EXTRA=()
+          if [ -n "${LIVE2D_IOS_LIB:-}" ] && [ -f "$LIVE2D_IOS_LIB" ]; then
+            echo "Force-linking $LIVE2D_IOS_LIB"
+            # Keep every Cubism function alive (-u marks it as required) while
+            # leaving normal dead-stripping on for everything else
+            UFLAGS="$(nm -gU "$LIVE2D_IOS_LIB" 2>/dev/null |
+              awk '$2=="T" && $3 ~ /^_csm/ {printf " -Wl,-u,%s", $3}')"
+            echo "Keeping $(echo "$UFLAGS" | grep -o -- '-u,' | wc -l | tr -d ' ') Cubism symbols"
+            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB$UFLAGS")
+          fi
+
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ${EXTRA[@]+"${EXTRA[@]}"} \
+            build
+
+      - name: Verify Live2D is linked into the app
+        if: ${{ env.LIVE2D_IOS_LIB != '' }}
+        run: |
+          set -euo pipefail
+
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
+            -maxdepth 2 -name '*.app' -type d | head -n1)"
+          EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          echo "Binary: $EXE"
+          ls -lh "$EXE"
+
+          nm -g "$EXE" > "$RUNNER_TEMP/nm.txt" 2>&1 || true
+          echo "--- Cubism symbols in the symbol table:"
+          grep -c -i csmGetVersion "$RUNNER_TEMP/nm.txt" || true
+
+          echo "--- Cubism symbols in the export list:"
+          xcrun dyld_info -exports "$EXE" 2>&1 | grep -i csmGetVersion || echo "csmGetVersion NOT exported"
+
+          if ! grep -q csmGetVersion "$RUNNER_TEMP/nm.txt"; then
+            echo "::error::Cubism Core was not linked into the app binary."
+            exit 1
+          fi
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+
+          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
+            -maxdepth 2 -name '*.app' -type d | head -n1)"
+
+          if [ -z "$APP" ]; then
+            echo "Built app not found"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+
+          OUTPUT="$RUNNER_TEMP/${GAME}-unsigned.ipa"
+
+          (
+            cd "$RUNNER_TEMP/ipa"
+            zip -qr "$OUTPUT" Payload
+          )
+
+          ls -lh "$OUTPUT"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-unsigned-ipa
+          path: ${{ runner.temp }}/${{ inputs.game_name }}-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
