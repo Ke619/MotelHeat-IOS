@@ -1,4 +1,4 @@
-Name: Universal Ren'Py 7 iOS Builder
+Name: Universal Ren'Py 7 iOS Builder (alternative)
 
 on:
   workflow_dispatch:
