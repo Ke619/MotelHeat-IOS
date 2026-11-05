@@ -410,8 +410,10 @@ jobs:
 
           xcodebuild -list -project "$PROJ"
 
+          # The 7.x template also contains a leftover "prototype" scheme that
+          # cannot be built; pick the game's own scheme instead.
           SCHEME="$(xcodebuild -list -project "$PROJ" -json |
-            python3 -c "import json,sys; print(json.load(sys.stdin)['project']['schemes'][0])")"
+            python3 -c "import json,sys; s=json.load(sys.stdin)['project']['schemes']; c=[x for x in s if x!='prototype']; print((c or s)[0])")"
 
           echo "Building scheme: $SCHEME"
 
