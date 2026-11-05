@@ -1,4 +1,4 @@
-name: Universal Ren'Py iOS Builder
+name: Universal Ren'Py 7 iOS Builder
 
 on:
   workflow_dispatch:
@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       renpy_version:
-        description: "Ren'Py SDK version"
+        description: "Ren'Py SDK version (7.x)"
         required: true
-        default: "8.3.6"
+        default: "7.4.4"
         type: string
       release_tag:
         description: "GitHub Release tag containing game.zip"
@@ -31,6 +31,12 @@ jobs:
       GAME: ${{ inputs.game_name }}
 
     steps:
+      # Ren'Py 7.x ships only x86_64 macOS binaries. The macos-15 runner is
+      # Apple Silicon, so they run through Rosetta.
+      - name: Install Rosetta
+        run: |
+          softwareupdate --install-rosetta --agree-to-license || echo "Rosetta install skipped or already present"
+
       - name: Download game assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,13 +57,6 @@ jobs:
             --pattern "archive.rpa" \
             --dir "$RUNNER_TEMP/dl" \
             --clobber || echo "No separate archive.rpa found"
-
-          # Optional: Live2D Cubism SDK zip attached to the same release
-          gh release download "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "CubismSdkForNative*.zip" \
-            --dir "$RUNNER_TEMP/dl" \
-            --clobber || echo "No Cubism zip in release; assuming no Live2D"
 
           ls -lh "$RUNNER_TEMP/dl"
 
@@ -230,104 +229,6 @@ jobs:
           PYEOF
           python3 "$RUNNER_TEMP/expose_rpa.py" "$RUNNER_TEMP/proj/game"
 
-      # Ren'Py 8.x runs on Python 3.9, where time.clock() no longer exists.
-      # Many older games call it at init time. Detecting this reliably is not
-      # possible (code may be compiled in .rpyc or packed in .rpa), so the shim
-      # is always installed. It does nothing if time.clock already exists or is
-      # never used.
-      - name: Add legacy time.clock() compatibility shim
-        run: |
-          set -euo pipefail
-
-          SHIM="$RUNNER_TEMP/proj/game/zz_time_clock_compat.rpy"
-
-          cat > "$SHIM" <<'EOF'
-          init -999 python:
-              import time
-              if not hasattr(time, "clock"):
-                  time.clock = time.perf_counter
-          EOF
-
-          echo "Wrote $SHIM:"
-          cat "$SHIM"
-
-      # Older games were written for Python 2 and break under Ren'Py 8's
-      # Python 3.9. This rewrites the common Python 2-only spellings in the
-      # game's source files. Only .rpy / .py sources can be patched; a stale
-      # .rpyc next to a patched file is deleted so Ren'Py recompiles it.
-      - name: Patch Python 2 leftovers in game source
-        run: |
-          set -euo pipefail
-
-          python3 - "$RUNNER_TEMP/proj/game" <<'PYEOF'
-          import os
-          import re
-          import sys
-
-          game_dir = sys.argv[1]
-
-          # Attribute-access renames only (note the leading dot), so ordinary
-          # variables that happen to share a name are left alone.
-          RULES = [
-              (r"\.func_code\b", ".__code__"),
-              (r"\.func_globals\b", ".__globals__"),
-              (r"\.func_defaults\b", ".__defaults__"),
-              (r"\.func_closure\b", ".__closure__"),
-              (r"\.func_dict\b", ".__dict__"),
-              (r"\.func_name\b", ".__name__"),
-              (r"\.im_func\b", ".__func__"),
-              (r"\.im_self\b", ".__self__"),
-              (r"\.iteritems\(", ".items("),
-              (r"\.itervalues\(", ".values("),
-              (r"\.iterkeys\(", ".keys("),
-          ]
-          RULES = [(re.compile(p), r) for p, r in RULES]
-
-          rpy_count = 0
-          patched = []
-
-          for root, dirs, files in os.walk(game_dir):
-              dirs[:] = [d for d in dirs if d != "python-packages"]
-              for name in files:
-                  ext = os.path.splitext(name)[1].lower()
-                  if ext not in (".rpy", ".py"):
-                      continue
-                  if ext == ".rpy":
-                      rpy_count += 1
-                  path = os.path.join(root, name)
-                  try:
-                      with open(path, "r", encoding="utf-8", newline="") as f:
-                          text = f.read()
-                  except (OSError, UnicodeDecodeError) as e:
-                      print("WARNING: skipped %s (%s)" % (path, e))
-                      continue
-
-                  new = text
-                  for rx, repl in RULES:
-                      new = rx.sub(repl, new)
-                  if new == text:
-                      continue
-
-                  with open(path, "w", encoding="utf-8", newline="") as f:
-                      f.write(new)
-                  patched.append(os.path.relpath(path, game_dir))
-
-                  stale = path + "c"
-                  if os.path.exists(stale):
-                      os.remove(stale)
-
-          if patched:
-              print("Patched %d file(s):" % len(patched))
-              for p in patched:
-                  print(" - " + p)
-          else:
-              print("No Python 2 spellings found in source files.")
-
-          if rpy_count == 0:
-              print("::warning::No .rpy source files found; the game ships only compiled "
-                    ".rpyc/.rpa, so source patching cannot work. Decompile with unrpyc first.")
-          PYEOF
-
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
@@ -353,10 +254,14 @@ jobs:
 
           mv "$RENIOS_DIR" "renpy-${V}-sdk/renios"
 
+          echo "=== SDK top level ==="
           ls "renpy-${V}-sdk"
+          echo "=== SDK lib ==="
+          ls "renpy-${V}-sdk/lib"
 
       # Diagnostic only: shows what was extracted and whether any compiled
-      # (.pyc) files match the Python version inside this Ren'Py SDK.
+      # (.pyc) files match the Python version inside this Ren'Py SDK
+      # (Python 2.7 for Ren'Py 7.x).
       - name: Check extracted Python packages
         run: |
           set -euo pipefail
@@ -374,14 +279,34 @@ jobs:
           echo "File types:"
           find "$PP" -type f | sed 's/.*\.//' | sort | uniq -c
 
-          chmod +x "$SDK"/lib/py3-mac-universal/python* 2>/dev/null || true
-          PY="${CHECK_PYTHON:-$SDK/lib/py3-mac-universal/pythonw}"
+          # The macOS Python folder is named differently across 7.x releases
+          # (mac-x86_64, py2-mac-x86_64, ...), so find it instead of hardcoding.
+          MACLIB="$(ls -d "$SDK"/lib/*mac* 2>/dev/null | head -n1 || true)"
+          if [ -z "$MACLIB" ]; then
+            echo "No macOS lib folder found in SDK; skipping check."
+            exit 0
+          fi
+          echo "macOS lib folder: $MACLIB"
 
+          chmod +x "$MACLIB"/python* 2>/dev/null || true
+          if [ -x "$MACLIB/python" ]; then
+            PY="$MACLIB/python"
+          else
+            PY="$MACLIB/pythonw"
+          fi
+
+          # Written to run on both Python 2 and 3.
           "$PY" - "$PP" <<'PYEOF' || echo "(check could not run; continuing)"
-          import sys, os, importlib.util
+          from __future__ import print_function
+          import sys, os, binascii
+          try:
+              import importlib.util
+              magic = importlib.util.MAGIC_NUMBER
+          except (ImportError, AttributeError):
+              import imp
+              magic = imp.get_magic()
           pp = sys.argv[1]
-          magic = importlib.util.MAGIC_NUMBER
-          print("Ren'Py's Python:", sys.version.split()[0], "- bytecode magic:", magic.hex())
+          print("Ren'Py's Python:", sys.version.split()[0], "- bytecode magic:", binascii.hexlify(magic).decode())
           seen, bad, n = {}, 0, 0
           for root, _, names in os.walk(pp):
               for name in names:
@@ -389,7 +314,8 @@ jobs:
                       n += 1
                       with open(os.path.join(root, name), "rb") as f:
                           m = f.read(4)
-                      seen[m.hex()] = seen.get(m.hex(), 0) + 1
+                      h = binascii.hexlify(m).decode()
+                      seen[h] = seen.get(h, 0) + 1
                       if m != magic:
                           bad += 1
           if n == 0:
@@ -407,44 +333,6 @@ jobs:
             echo "--- import test: $name"
             PYTHONPATH="$PP" "$PY" -c "import $name; print('imported OK')" 2>&1 | tail -n 3 || true
           done
-
-      # Optional: only installs if the user attached the Cubism SDK zip
-      # (downloaded from Live2D's website) to the release, in a PRIVATE repo.
-      - name: Install Live2D Cubism Core (if zip provided)
-        run: |
-          set -euo pipefail
-
-          ZIP="$(find "$RUNNER_TEMP/dl" -maxdepth 1 -name 'CubismSdkForNative*.zip' | head -n1 || true)"
-          if [ -z "$ZIP" ]; then
-            echo "No Cubism zip in release; assuming the game doesn't use Live2D."
-            exit 0
-          fi
-
-          cd "$RUNNER_TEMP"
-          rm -rf cubism && mkdir cubism
-          unzip -q "$ZIP" -d cubism
-          CORE="$(find cubism -type d -name Core -path '*CubismSdkForNative*' | head -n1)"
-          SDK="$RUNNER_TEMP/renpy-${V}-sdk"
-
-          # Desktop library, needed so ios_create can launch the project
-          cp "$CORE/dll/macos/libLive2DCubismCore.dylib" "$SDK/lib/py3-mac-universal/"
-
-          # iOS device library for the Xcode build
-          # NOTE: destination is unverified; if Xcode fails with a linker error
-          # about Live2DCubismCore, this path needs adjusting.
-          mkdir -p "$SDK/renios/prototype/Live2D"
-          cp "$CORE/lib/ios/Release-iphoneos/libLive2DCubismCore.a" "$SDK/renios/prototype/Live2D/"
-
-          # Remembered for the Xcode step, which links it into the app
-          echo "LIVE2D_IOS_LIB=$SDK/renios/prototype/Live2D/libLive2DCubismCore.a" >> "$GITHUB_ENV"
-
-          ls "$SDK/lib/py3-mac-universal" | grep -i live2d
-
-          # Cubism Core 06 (SDK 5-r.5+) renamed an API that Ren'Py still needs
-          if ! strings -a "$SDK/lib/py3-mac-universal/libLive2DCubismCore.dylib" | grep -q csmGetDrawableRenderOrders; then
-            echo "::error::This Cubism SDK is too new for Ren'Py (missing csmGetDrawableRenderOrders). Attach CubismSdkForNative 5-r.4.1 or older to the release."
-            exit 1
-          fi
 
       - name: Generate Xcode project
         # The runner has no display. ios_create launches the project once with
@@ -468,10 +356,9 @@ jobs:
           fi
 
           # Also place them in the SDK's own Python library folder, which Ren'Py
-          # always searches (its standard library lives there)
+          # always searches (its standard library lives there; python2.7 for 7.x)
           if [ -d "$RUNNER_TEMP/proj/game/python-packages" ]; then
-            ls "$RUNNER_TEMP/renpy-${V}-sdk/lib"
-            for LIBDIR in "$RUNNER_TEMP/renpy-${V}-sdk"/lib/python3*; do
+            for LIBDIR in "$RUNNER_TEMP/renpy-${V}-sdk"/lib/python*; do
               [ -d "$LIBDIR" ] || continue
               cp -R "$RUNNER_TEMP/proj/game/python-packages/." "$LIBDIR/"
               echo "Copied packages into $LIBDIR"
@@ -504,19 +391,10 @@ jobs:
 
           echo "Building scheme: $SCHEME"
 
-          # Live2D: Ren'Py looks up the Cubism functions inside the app binary,
-          # so the static library must be force-linked into it.
-          EXTRA=()
-          if [ -n "${LIVE2D_IOS_LIB:-}" ] && [ -f "$LIVE2D_IOS_LIB" ]; then
-            echo "Force-linking $LIVE2D_IOS_LIB"
-            # Keep every Cubism function alive (-u marks it as required) while
-            # leaving normal dead-stripping on for everything else
-            UFLAGS="$(nm -gU "$LIVE2D_IOS_LIB" 2>/dev/null |
-              awk '$2=="T" && $3 ~ /^_csm/ {printf " -Wl,-u,%s", $3}')"
-            echo "Keeping $(echo "$UFLAGS" | grep -o -- '-u,' | wc -l | tr -d ' ') Cubism symbols"
-            EXTRA+=("OTHER_LDFLAGS=\$(inherited) -force_load $LIVE2D_IOS_LIB$UFLAGS")
-          fi
-
+          # Ren'Py 7.x iOS templates predate current Xcode. These overrides avoid
+          # the two most likely failures: bitcode (removed from Xcode) and the
+          # 32-bit armv7 slice (no longer buildable). If the build still fails,
+          # the first compiler or linker error in this log says why.
           xcodebuild \
             -project "$PROJ" \
             -scheme "$SCHEME" \
@@ -524,34 +402,13 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/build" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            ENABLE_BITCODE=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            ${EXTRA[@]+"${EXTRA[@]}"} \
             build
-
-      - name: Verify Live2D is linked into the app
-        if: ${{ env.LIVE2D_IOS_LIB != '' }}
-        run: |
-          set -euo pipefail
-
-          APP="$(find "$RUNNER_TEMP/build/Build/Products" \
-            -maxdepth 2 -name '*.app' -type d | head -n1)"
-          EXE="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
-          echo "Binary: $EXE"
-          ls -lh "$EXE"
-
-          nm -g "$EXE" > "$RUNNER_TEMP/nm.txt" 2>&1 || true
-          echo "--- Cubism symbols in the symbol table:"
-          grep -c -i csmGetVersion "$RUNNER_TEMP/nm.txt" || true
-
-          echo "--- Cubism symbols in the export list:"
-          xcrun dyld_info -exports "$EXE" 2>&1 | grep -i csmGetVersion || echo "csmGetVersion NOT exported"
-
-          if ! grep -q csmGetVersion "$RUNNER_TEMP/nm.txt"; then
-            echo "::error::Cubism Core was not linked into the app binary."
-            exit 1
-          fi
 
       - name: Package unsigned IPA
         run: |
