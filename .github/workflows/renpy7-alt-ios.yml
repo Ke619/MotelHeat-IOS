@@ -1,4 +1,4 @@
-name: Universal Ren'Py 7 iOS Builder (alternative)
+name: Ren'Py 7 iOS Builder
 
 on:
   workflow_dispatch:
@@ -409,6 +409,12 @@ jobs:
             echo "::error::This Cubism SDK is too new for Ren'Py (missing csmGetDrawableRenderOrders). Attach CubismSdkForNative 5-r.4.1 or older to the release."
             exit 1
           fi
+
+      - name: Force project name definition
+        run: |
+          set -euo pipefail
+          echo 'define config.name = "${{ inputs.game_name }}"' > "$RUNNER_TEMP/proj/game/forced_name.rpy"
+          echo "Forced config.name to '${{ inputs.game_name }}'"
 
       - name: Generate Xcode project
         # The runner has no display. ios_create launches the project once with
