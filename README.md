@@ -51,7 +51,7 @@ If you are not sure which one your game uses:
 
 ### 1. Add the workflows
 
-Clone the repo, or copy the workflow file you need into your own repository:
+Copy the workflow file you need into your own repository:
 
 - `.github/workflows/renpy8-ios.yml` for Ren'Py 8 games
 - `.github/workflows/renpy7-ios.yml` for Ren'Py 7 games
