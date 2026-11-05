@@ -72,10 +72,8 @@ The default release tag is `1.0`, but you can use any tag when running the workf
 
 ## Live2D games
 
-> [!NOTE]
-> Live2D is only included in the Ren'Py 8 workflow. Ren'Py 7.5 and later can use Live2D, but the Ren'Py 7 workflow does not install the Cubism library yet, so Live2D games built with it will fail at launch.
-
-If your game uses Live2D models, Ren'Py needs the Live2D Cubism Core library to build. Live2D does not allow redistribution of this library, so the workflow does not include it. You supply your own copy:
+>[!IMPORTANT]
+>If your game uses Live2D models, Ren'Py needs the Live2D Cubism Core library to build. Live2D does not allow redistribution of this library, so the workflow does not include it. You supply your own copy:
 
 1. **Download the Cubism SDK for Native** from [Live2D's website](https://www.live2d.com/en/sdk/download/native/) and accept their license.
 2. **Use version 5-r.4.1 or older.** Versions from 5-r.5 onward (Core 06) are not compatible with Ren'Py yet, and the build will stop with an error.
@@ -93,14 +91,14 @@ Go to **Actions**, choose the workflow that matches your game, and click **Run w
 |:---|:---|:---|:---|
 | `game_name` | Name of the game | Required | Required |
 | `renpy_version` | Ren'Py SDK version | `8.3.6` | `7.8.7` |
-| `release_tag` | Release containing `game.zip` (and the Cubism zip for Live2D games on Ren'Py 8) | `1.0` | `1.0` |
+| `release_tag` | Release containing `game.zip` (and the Cubism zip for Live2D games) | `1.0` | `1.0` |
 
 Once submitted, GitHub Actions will automatically:
 
-1. Download the game assets (and the `Cubism.zip`, if present, on Ren'Py 8).
+1. Download the game assets (and the `Cubism.zip`, if present).
 2. Extract and prepare the Ren'Py project.
 3. Download the specified Ren'Py SDK and iOS support package.
-4. Install Live2D Cubism Core, if you provided it (Ren'Py 8 only).
+4. Install Live2D Cubism Core, if you provided it.
 5. Generate the Xcode project.
 6. Compile the application without code signing.
 7. Package the application into an IPA.
