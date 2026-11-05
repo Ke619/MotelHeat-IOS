@@ -251,6 +251,83 @@ jobs:
           echo "Wrote $SHIM:"
           cat "$SHIM"
 
+      # Older games were written for Python 2 and break under Ren'Py 8's
+      # Python 3.9. This rewrites the common Python 2-only spellings in the
+      # game's source files. Only .rpy / .py sources can be patched; a stale
+      # .rpyc next to a patched file is deleted so Ren'Py recompiles it.
+      - name: Patch Python 2 leftovers in game source
+        run: |
+          set -euo pipefail
+
+          python3 - "$RUNNER_TEMP/proj/game" <<'PYEOF'
+          import os
+          import re
+          import sys
+
+          game_dir = sys.argv[1]
+
+          # Attribute-access renames only (note the leading dot), so ordinary
+          # variables that happen to share a name are left alone.
+          RULES = [
+              (r"\.func_code\b", ".__code__"),
+              (r"\.func_globals\b", ".__globals__"),
+              (r"\.func_defaults\b", ".__defaults__"),
+              (r"\.func_closure\b", ".__closure__"),
+              (r"\.func_dict\b", ".__dict__"),
+              (r"\.func_name\b", ".__name__"),
+              (r"\.im_func\b", ".__func__"),
+              (r"\.im_self\b", ".__self__"),
+              (r"\.iteritems\(", ".items("),
+              (r"\.itervalues\(", ".values("),
+              (r"\.iterkeys\(", ".keys("),
+          ]
+          RULES = [(re.compile(p), r) for p, r in RULES]
+
+          rpy_count = 0
+          patched = []
+
+          for root, dirs, files in os.walk(game_dir):
+              dirs[:] = [d for d in dirs if d != "python-packages"]
+              for name in files:
+                  ext = os.path.splitext(name)[1].lower()
+                  if ext not in (".rpy", ".py"):
+                      continue
+                  if ext == ".rpy":
+                      rpy_count += 1
+                  path = os.path.join(root, name)
+                  try:
+                      with open(path, "r", encoding="utf-8", newline="") as f:
+                          text = f.read()
+                  except (OSError, UnicodeDecodeError) as e:
+                      print("WARNING: skipped %s (%s)" % (path, e))
+                      continue
+
+                  new = text
+                  for rx, repl in RULES:
+                      new = rx.sub(repl, new)
+                  if new == text:
+                      continue
+
+                  with open(path, "w", encoding="utf-8", newline="") as f:
+                      f.write(new)
+                  patched.append(os.path.relpath(path, game_dir))
+
+                  stale = path + "c"
+                  if os.path.exists(stale):
+                      os.remove(stale)
+
+          if patched:
+              print("Patched %d file(s):" % len(patched))
+              for p in patched:
+                  print(" - " + p)
+          else:
+              print("No Python 2 spellings found in source files.")
+
+          if rpy_count == 0:
+              print("::warning::No .rpy source files found; the game ships only compiled "
+                    ".rpyc/.rpa, so source patching cannot work. Decompile with unrpyc first.")
+          PYEOF
+
       - name: Download Ren'Py SDK and iOS support
         run: |
           set -euo pipefail
