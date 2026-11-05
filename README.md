@@ -168,5 +168,4 @@ If a build fails, scroll up to find the **first** error in the log. Later errors
 ## License
 
 - This project is a build tool provided for educational and personal use. Games listed were used only to test the workflow. This repo hosts no game files. All games belong to their owners.
-- This repository contains an automated build workflow. Game assets, scripts, and third-party materials remain subject to their respective licenses.
 - The Live2D Cubism SDK is proprietary software owned by Live2D Inc.; you are responsible for complying with its license terms.
