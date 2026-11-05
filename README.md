@@ -33,7 +33,7 @@ Ren'Py 7 and Ren'Py 8 use different Python versions, so a game built for one usu
 | Name in the Actions tab | Universal Ren'Py iOS Builder | Universal Ren'Py 7 iOS Builder |
 | Python | 3 | 2 |
 | Default SDK | `8.3.6` | `7.8.7` |
-| Live2D | Supported | Not included yet |
+| Live2D | Supported | Experimental |
 
 If you are not sure which one your game uses:
 
