@@ -80,7 +80,7 @@ The default release tag is `1.0`, but you can use any tag when running the workf
 3. **Attach the zip, unchanged, to the same release as `game.zip`.** Its name must start with `CubismSdkForNative` (for example `CubismSdkForNative-5-r.4.1.zip`).
 4. **Go to the `Actions` tab and run the Ren'Py 7/8 workflow.**
 
-> [!IMPORTANT]
+> [!CAUTION]
 > Private repositories use GitHub Actions minutes, and macOS minutes are billed at a higher rate than Linux ones. Check your plan's allowance.
 
 ## Building
