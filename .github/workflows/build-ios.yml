@@ -395,6 +395,36 @@ jobs:
 
           find "$RUNNER_TEMP/xcode" -maxdepth 3 | head -50
 
+      # The generated project asks the linker for a specific Python library
+      # (e.g. -lpython3.9), but the prebuilt folder may ship a different one
+      # (e.g. libpython2.7.a). If so, point the project at what is actually
+      # there. Does nothing when they already match.
+      - name: Align linked Python library with the prebuilt libraries
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/xcode"
+
+          echo "Python libraries in prebuilt/release:"
+          ls prebuilt/release 2>/dev/null | grep -i python || echo "(none)"
+
+          # libpython2.7.a -> python2.7
+          PRESENT="$(ls prebuilt/release 2>/dev/null | sed -n 's/^lib\(python[0-9.]*\)\.a$/\1/p' | head -n1)"
+
+          if [ -z "$PRESENT" ]; then
+            echo "::warning::No libpython*.a found in prebuilt/release; cannot align."
+            exit 0
+          fi
+
+          echo "Using -l$PRESENT"
+
+          { grep -rlE -- '-lpython[0-9.]+' \
+              --include='project.pbxproj' --include='*.xcconfig' . || true; } |
+          while IFS= read -r F; do
+            sed -i '' -E "s/-lpython[0-9.]+/-l${PRESENT}/g" "$F"
+            echo "Patched: $F"
+          done
+
       # Diagnostic only (never fails the build). Added to track down the
       # "Undefined symbols: _main" link error: it shows which source files the
       # project has, where main() is defined, and what the prebuilt libraries
@@ -432,6 +462,41 @@ jobs:
             [ -f "$L" ] || continue
             nm -g "$L" 2>/dev/null | grep -E ' [TS] _(SDL_)?main$' | sed "s|^|$L: |"
           done
+
+          echo "=== main.c (full contents) ==="
+          cat main.c
+
+          echo "=== Other small source files ==="
+          echo "--- Log.m"; cat Log.m
+
+          echo "=== Archive members and symbols of the small libs ==="
+          for L in prebuilt/release/librenpython.a prebuilt/release/libSDL2main.a; do
+            echo "--- $L members:"
+            ar -t "$L" 2>&1
+            echo "--- $L symbols:"
+            nm -a "$L" 2>&1 | head -40
+          done
+
+          echo "=== Any symbol named like main in any prebuilt lib ==="
+          for L in prebuilt/release/*.a; do
+            [ -f "$L" ] || continue
+            nm -a "$L" 2>/dev/null | grep -iE ' _[A-Za-z_]*main$' | sed "s|^|$L: |" | head -5
+          done
+
+          echo "=== Python references in the Xcode project ==="
+          grep -n -i "python" ./*.xcodeproj/project.pbxproj | head -20
+
+          echo "=== Python libraries actually present in prebuilt/release ==="
+          ls prebuilt/release 2>/dev/null | grep -i python
+
+          echo "=== Build settings that affect linking ==="
+          PROJ="$(find . -maxdepth 1 -name '*.xcodeproj' | head -n1)"
+          SCHEME="$(xcodebuild -list -project "$PROJ" -json 2>/dev/null |
+            python3 -c "import json,sys; s=json.load(sys.stdin)['project']['schemes']; c=[x for x in s if x!='prototype']; print((c or s)[0])")"
+          echo "Scheme: $SCHEME"
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -showBuildSettings 2>/dev/null \
+            | grep -E 'OTHER_LDFLAGS|LIBRARY_SEARCH_PATHS|EXECUTABLE_NAME|MACH_O_TYPE|PRODUCT_TYPE|GCC_PREPROCESSOR_DEFINITIONS'
 
           exit 0
 
